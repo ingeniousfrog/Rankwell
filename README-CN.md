@@ -1,186 +1,239 @@
+<p align="center">
+  <img src="brand-logo.svg" alt="Rankwell" width="120" />
+</p>
+
 # Rankwell
 
-**将网站转化为 SEO 文章选题、内容计划与有据草稿。**
+**本地优先、证据驱动的 SEO 内容规划**
 
-[English](README.md)
+爬取公开站点 · 搜索主题 · 编辑日历 · 有据草稿大纲
 
-Rankwell 是一款**本地优先**的 SEO 内容规划工具。输入公开网站 URL，即可自动构建站点上下文，并输出搜索主题、可配置的编辑日历，以及基于真实页面证据的草稿大纲——全部在本地完成，无需将爬取数据上传至云端规划服务。
+<br>
 
-AI 生成能力在本地复用 [Codex CLI](https://github.com/openai/codex) 的 OAuth 凭证；未配置时自动回退至确定性规则引擎，保证工作流始终可用。
+![Node.js 18+](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)
+![Apache License 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
+![v0.1.0](https://img.shields.io/badge/version-0.1.0-007ec6)
 
-| | |
-| --- | --- |
-| **运行环境** | Node.js 18+ · Tauri 2（macOS 桌面版） |
-| **AI 提供方** | Codex CLI OAuth（`auth_mode = chatgpt`） |
-| **数据驻留** | 本地存储 · 无云端规划后端 |
-| **版本** | 0.1.0 · 私有项目 |
+<br>
 
----
+[⚡ 快速开始](#快速开始) · [🖥 桌面版](#桌面版-macos) · [📖 English](README.md)
 
-## 产品定位
+<br>
 
-传统 SEO 规划工具通常要求你将 URL 粘贴到 SaaS 面板，然后依赖模型对站点的「猜测」。Rankwell 采用相反路径：
+[English](README.md) · **简体中文**
 
-1. **先爬取，再生成** — 通过 `robots.txt`、sitemap 与受控同域爬取建立站点认知，再进入规划阶段。
-2. **证据驱动** — 草稿引用真实页面 URL、摘录与版位建议，与站点结构对齐。
-3. **意图导向规划** — 关键词附带搜索意图、契合度与难度信号；内容日历长度可在 5–30 篇之间配置。
-4. **可交付输出** — 支持导出 Markdown、JSON 及可移植项目包，附带 QA 检查、Schema 建议与视觉资产方案。
+<br>
 
 ---
 
-## 核心能力
+Rankwell 回答的问题是：**「这个站点接下来该发什么内容？」** —— 先爬取真实页面，再在本地基于**可核验的站点证据**规划关键词、内容日历与草稿大纲，而不是依赖 SaaS 黑箱或一次性聊天提示词。
 
-### 站点洞察
+| | 能力 | 你将获得 |
+|:--:|------|----------|
+| 🕸 | **[站点爬取](#站点爬取与覆盖报告)** | `robots.txt` → sitemap → 同域爬取；覆盖报告、页面类型、失败记录与时间线 |
+| 🔎 | **[搜索主题](#搜索主题)** | 带意图、契合度、难度与问题变体的关键词候选 |
+| 📅 | **[内容日历](#内容日历)** | 可配置长度的编辑计划（5–30 篇），映射格式与版位 |
+| ✍️ | **[有据草稿](#有据草稿)** | 含 `evidenceRefs`、视觉方案与自动化 QA 的页面感知大纲 |
 
-| 能力 | 说明 |
-| --- | --- |
-| 发现策略 | `robots.txt` → sitemap 索引 → 同域链接爬取 |
-| 覆盖报告 | 爬取策略、页面数量、类型、失败记录、参考图与时间线 |
-| 安全护栏 | 自动跳过登录、购物车、搜索、结账及常见静态资源路径 |
-| 默认限制 | 60 页 · 深度 3 · 12 个 sitemap 文件（`lib/site-context.js`） |
+**Web UI** 位于仓库根目录（`index.html`、`app.js`）。**本地 API** 为 `server.js`，爬取、提示词与草稿引擎在 [`lib/`](lib/)。**macOS 桌面版** 为 [`src-tauri/`](src-tauri/) —— Tauri 2 壳，捆绑 Node sidecar 与静态 UI。
 
-### 内容策略
+## 架构
 
-| 能力 | 说明 |
-| --- | --- |
-| 规划输入 | 产品品类、目标受众、转化目标、品牌语气 |
-| 智能推断 | AI 自动推断，可在高级选项中手动覆盖 |
-| 搜索主题 | 候选关键词、问题变体、意图、契合度、难度 |
-| 编辑日历 | 滑块控制 5–30 个选题的计划长度 |
+### 产品流程
 
-### 草稿生产
+从单个 URL 到可导出产物的四个阶段如何串联：
 
-| 能力 | 说明 |
-| --- | --- |
-| 有据大纲 | 页面感知型章节结构，附带 `evidenceRefs` 证据引用 |
-| 视觉规划 | 资产类型建议、生成规格、参考图与 alt 文案 |
-| 质量门禁 | 接地性、URL、Schema、模板契合度、文案质量等 QA 检查 |
-| 导出格式 | Markdown · 原始 JSON · 可移植项目包 |
+```mermaid
+flowchart TB
+  URL["输入公开站点 URL"]
+  Crawl["站点爬取\nrobots · sitemap · 页面"]
+  Context["siteContext\n覆盖 · 摘录 · 版位"]
+  Assumptions["规划假设\n品类 · 受众 · 目标 · 语气"]
+  Themes["搜索主题\n关键词 · 意图 · 难度"]
+  Calendar["内容日历\n5–30 篇选题"]
+  Draft["有据草稿\n大纲 · 证据 · QA"]
+  Export["导出\nMarkdown · JSON · 项目包"]
 
-### 本地工作区
+  URL --> Crawl --> Context --> Assumptions
+  Assumptions --> Themes --> Calendar --> Draft --> Export
 
-| 能力 | 说明 |
-| --- | --- |
-| 项目持久化 | 工作区保存在浏览器 `localStorage` |
-| 跨设备迁移 | JSON 项目包导入/导出 |
-| 桌面模式 | Tauri 应用将 Node API 打包为原生 sidecar |
-
----
-
-## 系统架构
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  Rankwell 前端        index.html · app.js · styles.css      │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ HTTP (127.0.0.1:5279)
-┌──────────────────────────────▼──────────────────────────────┐
-│  本地 API 服务        server.js                             │
-│  ├── 站点爬取         lib/site-context.js · site-discovery  │
-│  ├── AI 提示词        lib/ai-prompts.js                     │
-│  ├── 草稿流水线       lib/draft-pipeline.js                  │
-│  └── 规则回退         client/fallback-workflow.js            │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ 可选
-┌──────────────────────────────▼──────────────────────────────┐
-│  Codex CLI OAuth      ~/.codex/auth.json                    │
-└─────────────────────────────────────────────────────────────┘
-
-桌面版（Tauri 2）：
-  Rankwell.app → 启动 server sidecar → 加载本地 Web UI
+  Provider["Codex CLI OAuth\n~/.codex/auth.json"]
+  Fallback["确定性规则\nclient/fallback-workflow.js"]
+  Provider -.->|"可选 AI"| Assumptions
+  Provider -.->|"可选 AI"| Themes
+  Provider -.->|"可选 AI"| Draft
+  Fallback -.->|"始终可用"| Themes
+  Fallback -.->|"始终可用"| Draft
 ```
 
-### 工作流
+### 项目结构（技术视角）
 
-```text
-URL
- └─► robots / sitemap 发现
-      └─► 页面爬取 → siteContext
-           └─► 规划假设（品类 / 受众 / 目标 / 语气）
-                └─► 搜索主题
-                     └─► 内容日历（5–30 篇）
-                          └─► 草稿大纲 + QA 检查清单
-                               └─► 导出（MD / JSON / 项目包）
+```mermaid
+flowchart TB
+  subgraph Clients["客户端"]
+    Web["Web UI\nindex.html · app.js · styles.css"]
+    Desktop["src-tauri/\nTauri 2 + bundled server sidecar"]
+  end
+
+  subgraph Server["server.js — 本地 API :5279"]
+    API["REST\n/api/generate · /api/draft · /api/provider/status"]
+  end
+
+  subgraph Engines["规划引擎"]
+    Crawl["site-context.js · site-discovery.js\nhtml-extractor.js"]
+    Prompts["ai-prompts.js"]
+    Pipeline["draft-pipeline.js\ndraft-compose · draft-quality-audit"]
+    Rules["fallback-workflow.js\ndraft-templates · content-audit"]
+  end
+
+  subgraph Storage["本地（浏览器）"]
+    Projects["localStorage 项目\nJSON 包导入/导出"]
+  end
+
+  Web --> API
+  Desktop --> API
+  API --> Crawl
+  API --> Prompts
+  API --> Pipeline
+  API --> Rules
+  Web --> Projects
 ```
 
----
+草稿生成是**证据驱动**的：章节通过 `evidenceRefs` 引用爬取到的 URL 与摘录；配置 LLM 时在其上规划与撰写，**未配置时**确定性回退路径仍可产出主题、日历项与大纲。
+
+## 与 SaaS SEO 工具、裸 LLM 对话的差异
+
+| | **SaaS SEO 规划器** | **ChatGPT / 一次性 LLM** | **Rankwell** |
+|---|---------------------|--------------------------|--------------|
+| **核心问题** | 我们的工具推荐什么词？ | 帮我为这个 URL 写 SEO 方案 | *这个*站点基于*真实页面*该发什么？ |
+| **工作单元** | 云端账号 + URL | 单条提示词 / 对话 | 爬取快照 → 主题 → 日历 → 草稿流水线 |
+| **输出** | 关键词列表、通用简报 | 未核验的文案，常编造 URL | 覆盖报告、主题日历、含 `evidenceRefs` 的大纲 + QA |
+| **站点认知** | 厂商服务器不透明爬取 | 模型臆测 | 本机确定性同域爬取（60 页 · 深度 3） |
+| **AI 角色** | 核心（厂商模型） | 核心（你的会话） | 可选 Codex CLI；**规则回退始终可用** |
+| **数据驻留** | 厂商云端 | 提示词发往提供商 | 爬取与项目留本地；无云端规划后端 |
+| **最适合** | 已采购 SEO 套件的团队 | 快速头脑风暴 | 需要**可审阅、可导出**发布前规划的操作者 |
+
+**搭配使用：** 排名追踪或 CMS 负责**线上表现**；Rankwell 负责**结构化、有据可依的编辑计划** —— 不能替代分析、排名追踪或完整 CMS 工作流。
+
+## 功能详解
+
+### 站点爬取与覆盖报告
+
+生成前的受控发现：
+
+- `robots.txt` → sitemap 索引 → 同域链接爬取（[`lib/site-discovery.js`](lib/site-discovery.js)、[`lib/site-context.js`](lib/site-context.js)）
+- 覆盖报告：策略、页面数、类型、失败记录、参考图、爬取时间线
+- 安全护栏：跳过登录、购物车、搜索、结账及常见静态资源
+- 默认限制：**60 页** · **深度 3** · **12 个 sitemap 文件**
+- 默认禁止本地/内网目标（设 `ALLOW_PRIVATE_TARGETS=1` 可覆盖）
+
+### 搜索主题
+
+与爬取结果绑定的关键词规划：
+
+- 候选词附带搜索意图、契合度、难度与问题变体
+- 规划输入：产品品类、受众、转化目标、品牌语气
+- AI 自动推断，可在高级选项手动覆盖
+- Codex 不可用时由确定性引擎生成主题（[`client/fallback-workflow.js`](client/fallback-workflow.js)）
+
+### 内容日历
+
+起草前可微调的编辑排期：
+
+- 滑块控制 **5–30** 篇选题（[`lib/plan-length.js`](lib/plan-length.js)）
+- 每项含标题、关键词、意图、格式（`guide`、`comparison`、`playbook` 等）、版位（`blog`、产品区等）
+- 日历审计：重复标题、泛化品类检测（[`lib/content-audit.js`](lib/content-audit.js)）
+
+### 有据草稿
+
+按日历项运行的多阶段草稿流水线（[`lib/draft-pipeline.js`](lib/draft-pipeline.js)）：
+
+| 阶段 | 需要 LLM？ | 输出 |
+|------|-----------|------|
+| **Plan** | 可选 | `draftIntent` — 角度、章节、接地目标 |
+| **Compose** | 否 | 由 `siteContext` + 日历项组装的上下文 |
+| **Write** | 可选 | 大纲块、版位 URL、视觉方案 |
+| **Audit** | 否 | QA：接地性、URL、Schema、模板契合、文案质量 |
+
+- `evidenceRefs` — 爬取页面的来源 URL 与摘录
+- `visualPlan` — 资产类型、生成规格、参考图、alt 文案
+- `qaChecks` — 发布前自动化审阅项
+- 语气预设：`sharp` · `editorial` · `technical` · `friendly` · `founder`
+
+**未配置任何 LLM** 时，仍可返回主题、日历、回退大纲与 QA 结果。
+
+### 本地工作区与导出
+
+- 项目保存在浏览器 `localStorage`（[`client/local-projects.js`](client/local-projects.js)）
+- JSON 项目包可跨设备导入/导出
+- 导出 Markdown、原始 JSON 或完整项目包（[`client/markdown-export.js`](client/markdown-export.js)、[`client/download.js`](client/download.js)）
+- 发布检查清单分类（[`client/checklist-taxonomy.js`](client/checklist-taxonomy.js)）
+
+## Rankwell 不是什么
+
+- **不是排名追踪或分析面板** — 无 SERP 位置、流量或 GSC 集成
+- **不是 CMS 或发布器** — 导出计划与草稿，不直接发到 WordPress、Webflow 等
+- **不是通用爬虫** — 仅为规划上下文做的有界同域爬取
+- **不能替代人工编辑** — QA 辅助审阅，不保证可直接发布的成稿
 
 ## 快速开始
 
-### 环境要求
-
-- **Node.js** 18 及以上（推荐 20+）
-- 本机可访问目标网站的**网络连接**
-- **可选：** 执行 `codex login`，并在 `~/.codex/auth.json` 中设置 `auth_mode = chatgpt`
-
-### 本地运行
+需要 **Node.js 18+**（推荐 20+）及访问目标站点的网络。
 
 ```bash
+git clone https://github.com/ingeniousfrog/Rankwell.git
+cd Rankwell
 npm install --cache ./.npm-cache
 npm run start
 ```
 
-在终端打开打印的地址（默认 `http://127.0.0.1:5279/`）。
+打开 [http://127.0.0.1:5279](http://127.0.0.1:5279)（或终端打印的地址）。
 
-| 步骤 | 操作 |
-| --- | --- |
-| 1 | 输入公开网站 URL |
-| 2 | 设置计划长度、写作风格或是否生成起始草稿 |
-| 3 | 点击 **Analyze with AI** |
-| 4 | 审阅站点覆盖、主题、日历、草稿与检查清单 |
-| 5 | 导出 Markdown、JSON 或项目包 |
+1. **输入** 公开网站 URL
+2. **调整** 计划长度、写作风格或高级规划字段
+3. **分析** — 爬取完成后生成主题、日历与起始草稿
+4. **审阅** 站点覆盖、主题、日历、草稿大纲与检查清单
+5. **导出** Markdown、JSON 或项目包
 
----
+## 配置 Codex（可选）
 
-## 桌面应用（macOS）
+Rankwell 复用你**已有的 Codex CLI 登录** —— 无需在 Web UI 粘贴 API Key。
 
-### 开发模式
+### 1. 使用 Codex CLI 登录
 
 ```bash
-npm install --cache ./.npm-cache
-npm run tauri:dev
+# 如未安装：https://github.com/openai/codex
+codex login
 ```
 
-### 发布构建
+将在 `~/.codex/auth.json` 创建或更新 ChatGPT OAuth（`auth_mode = chatgpt`）。可用 `CODEX_HOME` 覆盖目录。
 
-```bash
-npm run tauri:build
-```
+### 2. 在 Rankwell 中验证
 
-**产物路径：**
+1. 启动应用（`npm run start` 或桌面版）
+2. 查看 `/api/provider/status` 或界面中的 Codex 状态面板
+3. 可选设置 `AI_MODEL`（如 `gpt-5.5`），或使用 `~/.codex/config.toml` 中的 `model`
 
-```text
-src-tauri/target/release/bundle/dmg/Rankwell_0.1.0_aarch64.dmg
-src-tauri/target/release/bundle/macos/Rankwell.app
-```
+### 3. 生成
 
-桌面版自动启动 bundled Node sidecar，无需单独开终端运行服务。
+点击 **Analyze with AI**。Codex 缺失或失败时仍有确定性回退输出；模型负责增强规划与文案 —— **证据引用与 QA 检查仍是权威依据**。
 
-**额外依赖：** Rust 工具链 · Xcode Command Line Tools
+### Codex 排障
 
----
-
-## 环境变量
-
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `PORT` | `5279` | 本地 HTTP 服务端口 |
-| `CODEX_HOME` | `~/.codex` | Codex 配置与认证目录 |
-| `AI_MODEL` | Codex 配置或 `gpt-5.5` | 覆盖生成所用模型 |
-| `ALLOW_PRIVATE_TARGETS` | 未设置 | 设为 `1` 以允许 localhost / 内网目标 |
-
-```bash
-PORT=5280 AI_MODEL=gpt-5.5 npm run start
-```
-
----
+| 现象 | 处理建议 |
+|------|----------|
+| 找不到 `auth.json` | 在与 Rankwell 服务同一台机器上执行 `codex login` |
+| 提供方状态未认证 | 确认 `~/.codex/auth.json` 中 `auth_mode` 为 `chatgpt` |
+| 生成超时 | 重试；检查网络/VPN；大站点爬取+草稿耗时更长 |
+| AI 失败但主题/日历正常 | 预期回退行为 — 修复 Codex 后重跑以获得更丰富的草稿 |
+| 端口冲突 | 见[限制说明](#限制说明) — 同一端口只能跑一个服务实例 |
 
 ## API 参考
 
-基础地址：`http://127.0.0.1:5279`
+基础地址：[http://127.0.0.1:5279](http://127.0.0.1:5279)
 
 | 方法 | 端点 | 说明 |
-| --- | --- | --- |
+|------|------|------|
 | `GET` | `/api/provider/status` | Codex 认证状态与当前模型 |
 | `POST` | `/api/generate` | 爬取站点并生成完整规划工作区 |
 | `POST` | `/api/draft` | 为单个日历条目生成草稿 |
@@ -199,7 +252,7 @@ PORT=5280 AI_MODEL=gpt-5.5 npm run start
 }
 ```
 
-- `planLength` — 限制在 **5–30** 之间
+- `planLength` — 限制在 **5–30**
 - `voice` — `sharp` · `editorial` · `technical` · `friendly` · `founder` · 或留空由 AI 推断
 
 ### `POST /api/draft`
@@ -222,14 +275,68 @@ PORT=5280 AI_MODEL=gpt-5.5 npm run start
 ### 草稿对象字段
 
 | 字段 | 说明 |
-| --- | --- |
+|------|------|
 | `placement` | 建议的内容版位或页面类型 |
 | `placementUrl` | 现有或拟议 URL |
 | `visualPlan` | 资产类型、生成规格、参考图、alt 文案 |
 | `evidenceRefs` | 用于接地的来源 URL 与摘录 |
-| `qaChecks` | 发布前的自动化审阅项 |
+| `qaChecks` | 发布前自动化审阅项 |
 
----
+## 本地工作区
+
+| 位置 | 用途 |
+|------|------|
+| 浏览器 `localStorage` | 已保存的 Rankwell 项目（UI） |
+| 导出的 `.json` 包 | 可移植项目导入/导出 |
+| `~/.codex/` | Codex CLI 认证与配置（可选 AI） |
+
+爬取结果保存在会话/API 响应中 —— Rankwell 不会将站点数据上传至云端规划服务。
+
+## 限制说明
+
+- **公开 HTML 站点** — JS 重度 SPA 可能爬取上下文稀疏
+- **仅同域爬取** — 不支持跨域或需登录页面
+- **Codex：仅本地 CLI 会话** — 无浏览器内 OAuth 或内置 OpenAI API Key 界面
+- **目前仅 macOS 桌面版** — Tauri 构建 Apple Silicon DMG（`src-tauri/`）
+- **单端口** — 默认 `5279`；勿与已安装的桌面版同时在本机跑 `npm run start`
+- **英文优先的提示词** — UI 为英文；生成内容语言随站点与输入而定
+
+## 桌面版 (macOS)
+
+Rankwell 提供 **macOS 桌面应用**（[`src-tauri/`](src-tauri/)）—— Tauri 2 壳捆绑 Node API sidecar 与静态 UI，终端用户无需单独 `npm run start`。
+
+**版本号** 来自 [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)（当前 `0.1.0`）。
+
+### 从源码构建
+
+**依赖：** macOS、[Rust](https://rustup.rs/)、Xcode Command Line Tools、仓库开发依赖。
+
+```bash
+npm install --cache ./.npm-cache
+
+# 开发：Tauri 窗口 + 本地服务
+npm run tauri:dev
+
+# 发布：.app + .dmg（未签名；首次打开可能受 Gatekeeper 拦截）
+npm run tauri:build
+```
+
+**产物路径：**
+
+```text
+src-tauri/target/release/bundle/dmg/Rankwell_0.1.0_aarch64.dmg
+src-tauri/target/release/bundle/macos/Rankwell.app
+```
+
+**安装（macOS）：** 打开 DMG → 将 **Rankwell** 拖入「应用程序」。
+
+若 macOS 拦截未签名构建，右键应用 → **打开**，或执行：
+
+```bash
+xattr -cr /Applications/Rankwell.app
+```
+
+**勿在使用已安装应用时同时运行 `npm run start`** —— 两者均占用端口 `5279`。
 
 ## 开发与测试
 
@@ -238,9 +345,18 @@ npm test      # 71 项单元 / 集成测试
 npm run check # 服务端与客户端模块语法检查
 ```
 
+环境变量：
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PORT` | `5279` | 本地 HTTP 服务端口 |
+| `CODEX_HOME` | `~/.codex` | Codex 配置与认证目录 |
+| `AI_MODEL` | Codex 配置或 `gpt-5.5` | 覆盖生成所用模型 |
+| `ALLOW_PRIVATE_TARGETS` | 未设置 | 设为 `1` 以允许 localhost / 内网爬取目标 |
+
 ### 目录结构
 
-```text
+```
 rankwell/
 ├── index.html              # Web UI 入口
 ├── app.js                  # 客户端逻辑
@@ -249,51 +365,14 @@ rankwell/
 ├── lib/                    # 爬取、AI 提示词、草稿流水线
 ├── test/                   # Node 测试套件
 ├── scripts/bundle-server.sh
-├── src-tauri/              # Tauri 桌面壳与图标
+├── src-tauri/              # Tauri 桌面壳 + bundled sidecar
 ├── brand-logo.svg
 ├── package.json
+├── LICENSE
 ├── README.md
 └── README-CN.md
 ```
 
----
+## 许可证
 
-## 常见问题
-
-<details>
-<summary><strong>端口被占用（5279 EADDRINUSE）</strong></summary>
-
-```bash
-lsof -i :5279
-kill <PID>
-# 或换端口
-PORT=5280 npm run start
-```
-
-</details>
-
-<details>
-<summary><strong>AI 生成失败</strong></summary>
-
-1. 访问 `/api/provider/status` 或查看界面中的 Codex 状态面板。
-2. 确认 `~/.codex/auth.json` 中 `auth_mode` 为 `chatgpt`。
-3. 确认目标网站可访问且返回可爬取的 HTML。
-
-</details>
-
-<details>
-<summary><strong>站点爬取失败</strong></summary>
-
-API 将返回 `siteContext.ok: false`，并附带失败详情与爬取时间线。默认禁止本地与内网目标：
-
-```bash
-ALLOW_PRIVATE_TARGETS=1 PORT=5280 npm run start
-```
-
-</details>
-
----
-
-<p align="center">
-  <sub>Rankwell · 本地优先 SEO 内容规划 · <a href="README.md">English</a></sub>
-</p>
+Apache License 2.0 — 详见 [LICENSE](LICENSE)。
