@@ -1,0 +1,113 @@
+.project-list {
+  display: grid;
+  gap: 8px;
+}
+
+.project-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: none;
+  padding: 14px 16px;
+  transition: border-color 160ms ease;
+}
+
+.project-card:hover {
+  border-color: var(--line-strong);
+}
+
+.project-card h3 {
+  margin-bottom: 6px;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.14;
+}
+
+.project-card p {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.project-card span {
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.project-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.danger-action {
+  border-color: rgba(220, 38, 38, 0.2);
+  color: var(--red);
+}
+
+.danger-action:hover:not(:disabled) {
+  background: #fef2f2;
+  transform: none;
+}
+
+.coverage-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 8px 0;
+}
+
+.crawl-events {
+  background: var(--surface);
+}
+
+.crawl-event {
+  border-left: 2px solid var(--line);
+  padding-left: 9px;
+}
+
+.crawl-event.is-pass {
+  border-color: var(--green);
+}
+
+.crawl-event.is-warn {
+  border-color: var(--gold);
+}
+
+.crawl-event.is-fail {
+  border-color: var(--red);
+}
+
+.crawl-event span {
+  display: inline-block;
+  margin-right: 8px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.crawl-event em {
+  display: block;
+  margin-top: 3px;
+  font-size: 13px;
+}
+
+@media (max-width: 980px) {
+  .project-card {
+    grid-template-columns: 1fr;
+  }
+
+  .project-actions,
+  .coverage-actions {
+    justify-content: flex-start;
+  }
+}

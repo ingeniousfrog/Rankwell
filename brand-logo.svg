@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Rankwell">
+  <rect width="1024" height="1024" rx="200" fill="#eef2ff"/>
+  <rect x="220" y="560" width="120" height="200" rx="28" fill="#2F5FC4"/>
+  <rect x="380" y="460" width="120" height="300" rx="28" fill="#2F5FC4"/>
+  <rect x="540" y="320" width="120" height="440" rx="28" fill="#16A34A"/>
+  <path
+    d="M700 320 C820 320 860 420 860 500 C860 580 800 640 700 640 L620 640 L620 760 L540 760 L540 320 Z M700 560 C740 560 760 540 760 500 C760 460 740 400 700 400 L620 400 L620 560 Z"
+    fill="#ffffff"
+  />
+  <text
+    x="780"
+    y="760"
+    font-size="180"
+    font-family="Arial, Helvetica, sans-serif"
+    font-weight="700"
+    fill="#2F5FC4"
+  >W</text>
+</svg>

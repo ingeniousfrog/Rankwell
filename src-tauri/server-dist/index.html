@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rankwell</title>
+    <link rel="icon" href="brand-logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="workflow-ui.css" />
+    <link rel="stylesheet" href="local-app.css" />
+  </head>
+  <body class="is-landing">
+    <main class="app-shell">
+      <section id="loading-view" class="loading-view" hidden aria-live="polite">
+        <div class="loading-card">
+          <p class="loading-eyebrow">Building your planning board</p>
+          <div class="loading-progress-header">
+            <p id="loading-stage" class="loading-stage">Discovering site structure...</p>
+            <span id="loading-percent" class="loading-percent">0%</span>
+          </div>
+          <div
+            id="loading-progress-track"
+            class="loading-progress-track"
+            role="progressbar"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
+            aria-label="Analysis progress"
+          >
+            <div id="loading-progress-bar" class="loading-progress-bar"></div>
+          </div>
+          <ol id="loading-steps" class="loading-steps"></ol>
+          <p class="loading-hint">Crawling pages and generating strategy — usually 30s to 2 min.</p>
+        </div>
+      </section>
+
+      <section id="workspace-view" class="workspace-view">
+        <div class="workspace">
+          <aside class="control-panel" aria-label="Workspace inputs">
+            <section id="landing-view" class="landing-stack">
+              <div class="landing-hero">
+                <img class="brand-logo brand-logo-lg" src="brand-logo.svg" width="64" height="64" alt="Rankwell" />
+                <h1>Turn a website into SEO article ideas, content plans, and grounded drafts.</h1>
+                <p class="landing-subtitle">
+                  Crawl public pages, map search themes, build a configurable content calendar, and generate review-ready drafts grounded in your site — powered by local Codex AI when available.
+                </p>
+              </div>
+            </section>
+
+            <div class="brand-lockup workspace-brand">
+              <img class="brand-logo" src="brand-logo.svg" width="36" height="36" alt="" />
+              <div>
+                <p class="eyebrow">Rankwell</p>
+                <h1 class="workspace-title">SEO content planning workspace</h1>
+              </div>
+            </div>
+
+            <form id="workflow-form" class="input-stack">
+              <div class="url-input-row">
+                <span class="url-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                  </svg>
+                </span>
+                <label class="url-label">
+                  <span class="sr-only">Website URL</span>
+                  <input
+                    id="website-url"
+                    type="url"
+                    value=""
+                    placeholder="https://example.com"
+                    autocomplete="off"
+                    autocapitalize="off"
+                    spellcheck="false"
+                    required
+                  />
+                </label>
+                <button class="submit-inline" type="submit" aria-label="Analyze website">
+                  <span id="generate-label-inline">Analyze</span>
+                </button>
+              </div>
+
+              <div class="workflow-options">
+                <label>
+                  Plan length
+                  <div class="range-control">
+                    <input id="plan-length" type="range" min="5" max="30" step="1" value="14" />
+                    <span id="plan-length-value">14 topics</span>
+                  </div>
+                </label>
+
+                <label>
+                  Starter draft
+                  <span class="checkbox-control">
+                    <input id="include-draft" type="checkbox" />
+                    <span>Generate after analysis</span>
+                  </span>
+                </label>
+
+                <label>
+                  Writing style
+                  <select id="voice">
+                    <option value="">AI inferred</option>
+                    <option value="sharp">Operator brief</option>
+                    <option value="editorial">Field-guide narrative</option>
+                    <option value="technical">Evidence memo</option>
+                    <option value="friendly">Plain-language coach</option>
+                    <option value="founder">Founder note</option>
+                  </select>
+                </label>
+              </div>
+
+              <button class="primary-action workspace-submit" type="submit">
+                <span id="generate-label">Analyze with AI</span>
+                <span class="button-icon" aria-hidden="true">→</span>
+              </button>
+            </form>
+
+            <div id="provider-card" class="provider-card" aria-live="polite">
+              <div class="provider-card-header">
+                <span id="provider-dot" class="provider-dot" aria-hidden="true"></span>
+                <span id="provider-status-text">Checking Codex OAuth...</span>
+              </div>
+              <dl id="provider-details" class="provider-details"></dl>
+            </div>
+
+            <p class="landing-footnote">Rule-based fallback available when Codex is not configured.</p>
+
+            <div class="panel-actions">
+              <button id="import-package" class="secondary-action panel-import" type="button">Import project</button>
+            </div>
+
+            <div class="workflow-rail" aria-label="Generated workspace stages">
+              <div class="rail-node is-active" data-stage="strategy">Map site</div>
+              <div class="rail-node" data-stage="site">Site coverage</div>
+              <div class="rail-node" data-stage="keywords">Explore themes</div>
+              <div class="rail-node" data-stage="calendar">Build plan</div>
+              <div class="rail-node" data-stage="draft">Prepare draft</div>
+              <div class="rail-node" data-stage="checklist">Review checklist</div>
+              <div class="rail-node" data-stage="projects">Local projects</div>
+              <div class="rail-node" data-stage="history">Review cost</div>
+            </div>
+          </aside>
+
+          <section class="output-board" aria-live="polite">
+            <header class="board-header">
+              <div>
+                <p class="eyebrow">Generated workspace</p>
+                <h2 id="project-title">Planning workspace</h2>
+              </div>
+              <div class="header-actions">
+                <button id="new-analysis" class="secondary-action" type="button">New analysis</button>
+                <button id="export-markdown" class="icon-button" type="button" title="Download Markdown" disabled>
+                  MD
+                </button>
+                <button id="export-json" class="icon-button" type="button" title="Download JSON" disabled>
+                  JSON
+                </button>
+                <button id="export-package" class="icon-button" type="button" title="Download local package" disabled>
+                  PKG
+                </button>
+                <input id="import-package-input" class="file-input" type="file" accept="application/json,.json" />
+              </div>
+            </header>
+
+            <div id="workflow-banner" class="workflow-banner" hidden role="status"></div>
+
+            <nav class="tabs" aria-label="Workspace views">
+              <button class="tab is-active" type="button" data-tab="strategy">Strategy</button>
+              <button class="tab" type="button" data-tab="site">Site coverage</button>
+              <button class="tab" type="button" data-tab="keywords">Search themes</button>
+              <button class="tab" type="button" data-tab="calendar">Content plan</button>
+              <button class="tab" type="button" data-tab="draft">Draft outline</button>
+              <button class="tab" type="button" data-tab="checklist">Checklist</button>
+              <button class="tab" type="button" data-tab="projects">Projects</button>
+              <button class="tab" type="button" data-tab="history">History</button>
+            </nav>
+
+            <section id="strategy" class="tab-panel is-active">
+              <div class="split-grid">
+                <article class="panel-block">
+                  <h3>Business profile</h3>
+                  <dl id="strategy-profile" class="definition-list"></dl>
+                </article>
+                <article class="panel-block signal-panel">
+                  <h3>Planning board</h3>
+                  <div class="machine-map" aria-label="Workspace map">
+                    <span>URL</span>
+                    <span>Context</span>
+                    <span>Keywords</span>
+                    <span>Draft</span>
+                    <span>Export</span>
+                  </div>
+                  <p id="machine-summary"></p>
+                </article>
+              </div>
+            </section>
+
+            <section id="site" class="tab-panel">
+              <div id="site-coverage" class="site-coverage"></div>
+            </section>
+
+            <section id="keywords" class="tab-panel">
+              <div id="keyword-list" class="keyword-grid"></div>
+            </section>
+
+            <section id="calendar" class="tab-panel">
+              <div id="calendar-list" class="calendar-list"></div>
+            </section>
+
+            <section id="draft" class="tab-panel">
+              <div class="draft-toolbar">
+                <label>
+                  Draft topic
+                  <select id="draft-selector"></select>
+                </label>
+                <div class="draft-toolbar-actions">
+                  <button id="regenerate-draft" class="secondary-action" type="button">Regenerate</button>
+                  <button id="copy-draft" class="secondary-action" type="button">Copy draft</button>
+                </div>
+              </div>
+              <article id="article-draft" class="article-draft"></article>
+            </section>
+
+            <section id="checklist" class="tab-panel">
+              <div id="checklist-list" class="checklist-list"></div>
+            </section>
+
+            <section id="projects" class="tab-panel">
+              <div id="project-list" class="project-list"></div>
+            </section>
+
+            <section id="history" class="tab-panel">
+              <div id="history-list" class="history-list"></div>
+            </section>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
