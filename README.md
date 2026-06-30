@@ -1,10 +1,11 @@
-<p align="center">
-  <img src="brand-logo.svg" alt="Rankwell" width="120" />
-</p>
+<div align="center">
+  <div style="display: inline-flex; align-items: center; gap: 14px; margin-bottom: 10px;">
+    <img src="brand-logo.svg" alt="" width="72" height="72" />
+    <h1 style="margin: 0; font-size: 2.4em; font-weight: 700; line-height: 1;">Rankwell</h1>
+  </div>
+</div>
 
-# Rankwell
-
-**Local-first, evidence-grounded SEO content planning**
+<p align="center"><strong>Local-first, evidence-grounded SEO content planning</strong></p>
 
 Crawl a public site · search themes · editorial calendar · grounded draft outlines
 
