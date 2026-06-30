@@ -17,11 +17,7 @@
 
 <br>
 
-[⚡ 快速开始](#快速开始) · [🖥 桌面版](#桌面版-macos) · [📖 English](README.md)
-
-<br>
-
-[English](README.md) · **简体中文**
+[⚡ 快速开始](#快速开始) · [🖥 桌面版](#桌面版-macos) · [English](README.md) · **简体中文**
 
 <br>
 

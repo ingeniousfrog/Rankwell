@@ -17,11 +17,7 @@ Crawl a public site · search themes · editorial calendar · grounded draft out
 
 <br>
 
-[⚡ Quick start](#quick-start) · [🖥 Desktop](#desktop-macos) · [📖 简体中文](README-CN.md)
-
-<br>
-
-**English** · [简体中文](README-CN.md)
+[⚡ Quick start](#quick-start) · [🖥 Desktop](#desktop-macos) · **English** · [简体中文](README-CN.md)
 
 <br>
 
