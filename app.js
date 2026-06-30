@@ -1,3 +1,4 @@
+import { initAppMeta } from "./client/app-meta.js";
 import { downloadFile } from "./client/download.js";
 import { createFallbackWorkflow, parseDomain, voiceRules, inferPlacementUrl } from "./client/fallback-workflow.js";
 import {
@@ -1504,6 +1505,7 @@ projectList.addEventListener("click", (event) => {
 
 setAppPhase("landing");
 refreshProviderStatus();
+initAppMeta();
 
 window.addEventListener("pageshow", (event) => {
   if (event.persisted && appPhase === "loading") {

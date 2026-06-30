@@ -1167,6 +1167,184 @@ body.is-workspace .panel-actions {
   opacity: 1;
 }
 
+/* ── App meta footer ── */
+
+.app-meta {
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px 8px;
+  width: min(1480px, calc(100% - 44px));
+  transform: translateX(-50%);
+  margin: 0;
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 1.45;
+  pointer-events: none;
+}
+
+.app-meta-version,
+.app-meta-nav {
+  pointer-events: auto;
+}
+
+.app-meta-nav {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.app-meta-sep {
+  color: var(--line-strong);
+  user-select: none;
+}
+
+.app-meta-link {
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 1.45;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.app-meta-link:hover {
+  color: var(--muted);
+  transform: none;
+}
+
+.app-meta-external {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* ── Info dialog ── */
+
+.info-dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: 80vh;
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--text);
+}
+
+.info-dialog::backdrop {
+  background: rgba(26, 29, 33, 0.28);
+  backdrop-filter: blur(2px);
+}
+
+.info-dialog-shell {
+  display: flex;
+  flex-direction: column;
+  max-height: 80vh;
+}
+
+.info-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.info-dialog-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.info-dialog-close {
+  min-width: 32px;
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.info-dialog-close:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.info-dialog-body {
+  overflow: auto;
+  padding: 14px 18px 18px;
+}
+
+.info-panel p,
+.info-panel li {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.info-panel p:last-child,
+.info-panel li:last-child {
+  margin-bottom: 0;
+}
+
+.info-list,
+.info-steps {
+  margin: 0 0 12px;
+  padding-left: 18px;
+}
+
+.info-subheading {
+  margin: 14px 0 8px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.info-note {
+  color: var(--faint) !important;
+  font-size: 12px !important;
+}
+
+.info-copyright {
+  margin-top: 12px !important;
+  color: var(--text) !important;
+  font-family: var(--font-mono);
+  font-size: 11px !important;
+  font-weight: 600;
+}
+
+.info-panel code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.info-panel a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.info-panel a:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
 @media (max-width: 980px) {
   .app-shell {
     padding: 12px;
@@ -1216,5 +1394,10 @@ body.is-workspace .panel-actions {
 
   .landing-hero h1 {
     font-size: 22px;
+  }
+
+  .app-meta {
+    width: calc(100% - 24px);
+    bottom: 10px;
   }
 }
