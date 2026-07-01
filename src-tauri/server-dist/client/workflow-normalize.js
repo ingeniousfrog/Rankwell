@@ -26,13 +26,23 @@ export const normalizeReferenceImages = (items) =>
 const normalizeTextField = (value, fallback = "") => {
   if (typeof value === "string") return value.trim();
   if (!value || typeof value !== "object") return fallback;
-  const preferredKeys = ["description", "metaDescription", "summary", "text", "body", "copy", "title"];
+  const preferredKeys = ["label", "name", "value", "url", "href", "description", "metaDescription", "summary", "text", "body", "copy", "title"];
   const found = preferredKeys
     .map((key) => value[key])
     .find((item) => typeof item === "string" && item.trim());
   if (found) return found.trim();
   const parts = Object.values(value).filter((item) => typeof item === "string" && item.trim());
   return parts.length ? parts.join(" ").trim() : fallback;
+};
+
+const normalizeUrlField = (value, fallback = "") => {
+  const raw = normalizeTextField(value, fallback);
+  if (!raw) return "";
+  try {
+    return new URL(raw).toString();
+  } catch {
+    return fallback || raw;
+  }
 };
 
 const normalizeQaCheck = (item) => {
@@ -131,9 +141,9 @@ export const normalizeDraft = (draft, context = {}) => {
           typeof item === "string" ? item : [item?.question, item?.answer].filter(Boolean).join(" — "),
         )
       : faqFromBlocks(draft.blocks),
-    placement: draft.placement || template.label,
-    placementUrl: draft.placementUrl || draft.publishUrl || "",
-    targetUrl: draft.targetUrl || draft.placementUrl || draft.publishUrl || calendarItem.targetUrl || "",
+    placement: normalizeTextField(draft.placement, template.label),
+    placementUrl: normalizeUrlField(draft.placementUrl || draft.publishUrl, ""),
+    targetUrl: normalizeUrlField(draft.targetUrl || draft.placementUrl || draft.publishUrl || calendarItem.targetUrl, ""),
     sourceCalendarItemId: draft.sourceCalendarItemId || calendarItem.id || "",
     sourceOpportunityId: draft.sourceOpportunityId || calendarItem.sourceOpportunityId || "",
     opportunityType: draft.opportunityType || calendarItem.opportunityType || "crawlFallback",
@@ -257,13 +267,14 @@ export const normalizeWorkflow = (workflow, fallbackInputs) => {
     calendarAudit: calendarAudit.summary,
     drafts: Array.isArray(workflow.drafts)
       ? workflow.drafts.slice(0, planLength).map((draft, index) => {
+          const draftPlacement = normalizeTextField(draft.placement, "");
           const calendarItem =
             rawCalendar.find((item) => item.id && item.id === draft.sourceCalendarItemId) ||
             rawCalendar[index] ||
             rawCalendar[0] ||
             {};
           const normalized = normalizeDraft(draft, {
-            calendarItem: { ...calendarItem, placement: draft.placement || calendarItem.placement },
+            calendarItem: { ...calendarItem, placement: draftPlacement || calendarItem.placement },
             siteContext,
             inputs,
           });

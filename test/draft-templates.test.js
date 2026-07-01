@@ -207,6 +207,72 @@ test("normalizeWorkflow turns structured meta and blank QA checks into publishab
   assert.doesNotMatch(markdown, /pass: Check -\s*$/m);
 });
 
+test("normalizeWorkflow flattens object placement fields before rendering and audit", () => {
+  const workflow = normalizeWorkflow(
+    {
+      inputs: { url: "https://synclip.ai/", domain: "synclip.ai" },
+      strategy: {},
+      keywords: [{ keyword: "ai canvas workflow", intent: "Education", commercialValue: 4, difficulty: 2, productFit: 4 }],
+      calendar: [
+        {
+          id: "plan-1",
+          day: 1,
+          title: "AI Canvas Workflow",
+          keyword: "ai canvas workflow",
+          placement: "blog",
+          format: "guide",
+          placementUrl: "https://synclip.ai/blog/ai-canvas-workflow",
+        },
+      ],
+      drafts: [
+        {
+          title: "AI Canvas Workflow",
+          meta: "Plan creative work before generation.",
+          placement: { label: "blog article", reason: "Best fit for education intent" },
+          placementUrl: { url: "https://synclip.ai/blog/ai-canvas-workflow" },
+          targetUrl: { url: "https://synclip.ai/blog/ai-canvas-workflow" },
+          sections: [
+            { heading: "Plan the work", body: "Use a canvas to define the creative direction." },
+            { heading: "Connect to production", body: "Move from planning into the Synclip workflow." },
+            { heading: "Review before scale", body: "Check pricing and production needs before publishing." },
+          ],
+          evidenceRefs: [
+            {
+              url: "https://synclip.ai/",
+              pageTitle: "Synclip",
+              quote: "AI video generation platform",
+              usedFor: "Grounding",
+            },
+            {
+              url: "https://synclip.ai/pricing",
+              pageTitle: "Pricing",
+              quote: "Pricing context",
+              usedFor: "CTA",
+            },
+          ],
+        },
+      ],
+      checklist: [],
+      siteContext: {
+        ok: true,
+        startUrl: "https://synclip.ai/",
+        pages: [
+          { url: "https://synclip.ai/", title: "Synclip", h1: "AI video generation platform" },
+          { url: "https://synclip.ai/pricing", title: "Pricing" },
+        ],
+      },
+    },
+    { url: "https://synclip.ai/", domain: "synclip.ai" },
+  );
+
+  const draft = workflow.drafts[0];
+  assert.equal(draft.placement, "blog article");
+  assert.equal(draft.placementUrl, "https://synclip.ai/blog/ai-canvas-workflow");
+  assert.equal(draft.targetUrl, "https://synclip.ai/blog/ai-canvas-workflow");
+  assert.equal(draft.templateAudit.hasFailures, false);
+  assert.doesNotMatch(draftToMarkdown(draft), /\[object Object\]/);
+});
+
 test("normalizeWorkflow respects requested content plan length", () => {
   const calendar = Array.from({ length: 12 }, (_, index) => ({
     day: index + 1,
