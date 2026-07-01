@@ -44,11 +44,15 @@ fn wait_for_server() -> Result<(), String> {
 fn start_server_sidecar(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let resource_dir = app.path().resource_dir()?;
     let static_root = resource_dir.join("server-dist");
+    let home_dir = app.path().home_dir()?;
+    let codex_home = home_dir.join(".codex");
 
     let sidecar = app.shell().sidecar("server")?;
     let (mut rx, child) = sidecar
         .env("PORT", SERVER_PORT.to_string())
         .env("STATIC_ROOT", static_root.to_string_lossy().to_string())
+        .env("HOME", home_dir.to_string_lossy().to_string())
+        .env("CODEX_HOME", codex_home.to_string_lossy().to_string())
         .spawn()?;
 
     std::thread::spawn(move || {

@@ -68,7 +68,19 @@ const sendNdjsonLine = (res, payload) => {
 
 const wantsNdjsonStream = (req) => String(req.headers.accept || "").includes("application/x-ndjson");
 
-const getCodexHome = () => process.env.CODEX_HOME?.trim() || path.join(os.homedir(), ".codex");
+const getCodexHome = () => {
+  const defaultHome = path.join(os.homedir(), ".codex");
+  const fromEnv = process.env.CODEX_HOME?.trim();
+  if (!fromEnv) return defaultHome;
+
+  const envAuthPath = path.join(fromEnv, "auth.json");
+  const defaultAuthPath = path.join(defaultHome, "auth.json");
+  if (!fs.existsSync(envAuthPath) && fs.existsSync(defaultAuthPath)) {
+    return defaultHome;
+  }
+
+  return fromEnv;
+};
 const getCodexAuthPath = () => path.join(getCodexHome(), "auth.json");
 
 const readCodexDefaultModel = () => {
