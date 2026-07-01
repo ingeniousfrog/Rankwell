@@ -36,7 +36,8 @@ export function classifyClientError(error) {
 
   if (
     message === "Failed to fetch" ||
-    (error instanceof TypeError && /fetch/i.test(message)) ||
+    message === "Load failed" ||
+    (error instanceof TypeError && /fetch|load failed/i.test(message)) ||
     causeCode === "ECONNREFUSED" ||
     /ECONNREFUSED|ENOTFOUND|network/i.test(causeMessage)
   ) {

@@ -40,6 +40,47 @@ const blocksToMarkdown = (blocks = []) =>
     })
     .join("\n\n");
 
+const formatMetricNumber = (value) => {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? String(Math.round(number)) : "0";
+};
+
+const formatMetricPercent = (value) => {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? `${(number * 100).toFixed(1)}%` : "0.0%";
+};
+
+const formatPosition = (value) => {
+  const number = Number(value || 0);
+  return Number.isFinite(number) && number > 0 ? number.toFixed(1) : "n/a";
+};
+
+const opportunityToMarkdown = (item) => {
+  const metrics = item.metrics || {};
+  const target = item.page || (item.urls || []).join(", ") || "No suitable landing page";
+  const actions = (item.recommendedActions || []).map((action) => `  - ${action}`).join("\n");
+  const query = item.query ? `Query: ${item.query}\n` : "";
+  return `- [${item.priority || "medium"}] ${item.type}: ${item.title}
+  ${query}  Target: ${target}
+  Metrics: ${formatMetricNumber(metrics.impressions)} impressions, ${formatMetricNumber(metrics.clicks)} clicks, ${formatMetricPercent(metrics.ctr)} CTR, avg position ${formatPosition(metrics.position)}
+  Reason: ${item.reason || ""}
+${actions || "  - Review before publishing."}`;
+};
+
+const gscPerformanceToMarkdown = (performance = {}) => {
+  const dateRange = performance.dateRange || {};
+  const range =
+    dateRange.startDate && dateRange.endDate
+      ? `${dateRange.startDate} to ${dateRange.endDate}`
+      : "No date range loaded";
+  return `- Status: ${performance.status || "not-connected"}
+- Property: ${performance.propertyUrl || "not selected"}
+- Date range: ${range}
+- Rows: ${formatMetricNumber(performance.rowCount)}
+- Totals: ${formatMetricNumber(performance.totalImpressions)} impressions, ${formatMetricNumber(performance.totalClicks)} clicks, ${formatMetricPercent(performance.averageCtr)} average CTR, avg position ${formatPosition(performance.averagePosition)}
+${(performance.limitations || []).map((item) => `- Limitation: ${item}`).join("\n")}`;
+};
+
 export const draftToMarkdown = (draft) => {
   const hasBlocks = Array.isArray(draft.blocks) && draft.blocks.length > 0;
   const body = hasBlocks
@@ -50,6 +91,10 @@ export const draftToMarkdown = (draft) => {
 
   return `# ${draft.title}
 
+Draft mode: ${draft.draftMode || "newPageDraft"}
+Source plan item: ${draft.sourceCalendarItemId || "Not specified"}
+Source opportunity: ${draft.sourceOpportunityId || "Not specified"}
+Target URL: ${draft.targetUrl || draft.placementUrl || "Not specified"}
 Template: ${draft.templateLabel || draft.templateId || "Blog article"}
 Meta description: ${draft.meta}
 
@@ -102,9 +147,19 @@ ${(workflow.siteContext?.pages || [])
 ## Strategy
 
 ${Object.entries(workflow.strategy)
-  .filter(([key]) => key !== "refreshCandidates")
+  .filter(([key, value]) => key !== "refreshCandidates" && key !== "opportunities" && typeof value !== "object")
   .map(([key, value]) => `- ${key}: ${value}`)
   .join("\n")}
+
+## SEO Opportunity Engine
+
+${gscPerformanceToMarkdown(workflow.gscPerformance)}
+
+${
+  (workflow.strategy?.opportunities || []).length
+    ? workflow.strategy.opportunities.map((item) => opportunityToMarkdown(item)).join("\n\n")
+    : "- No GSC-backed opportunities available yet."
+}
 
 ## Refresh queue
 
@@ -130,13 +185,20 @@ ${workflow.keywords
   })
   .join("\n")}
 
-## Content Plan
+## Opportunity-backed Plan
 
 ${(workflow.calendarAudit ? `- Plan review: ${workflow.calendarAudit.failures || 0} failed · ${workflow.calendarAudit.warnings || 0} warnings\n` : "") + workflow.calendar
   .map((item) => {
     const issue = (item.qaChecks || []).find((check) => check.status === "fail");
     const suffix = issue ? ` [needs fix: ${issue.detail}]` : item.suggestedTitle ? ` [suggested: ${item.suggestedTitle}]` : "";
-    return `${item.day}. ${item.title} - ${item.keyword}${suffix}`;
+    const metrics = item.opportunityMetrics || {};
+    const metricLine = `GSC: ${formatMetricNumber(metrics.impressions)} impressions, ${formatMetricNumber(metrics.clicks)} clicks, ${formatMetricPercent(metrics.ctr)} CTR, avg position ${formatPosition(metrics.position)}`;
+    const actions = (item.recommendedActions || []).map((action) => `   - ${action}`).join("\n");
+    return `${item.day}. [${item.opportunityType || "crawlFallback"} / ${item.draftMode || "newPageDraft"}] ${item.title} - ${item.keyword}${suffix}
+   Target URL: ${item.targetUrl || item.placementUrl || "Not specified"}
+   Source opportunity: ${item.sourceOpportunityId || "Not specified"}
+   ${metricLine}
+${actions || "   - Review before generating."}`;
   })
   .join("\n")}
 

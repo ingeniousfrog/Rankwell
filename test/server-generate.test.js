@@ -115,3 +115,209 @@ test("POST /api/generate returns crawled site context instead of crashing before
 
   assert.deepEqual(stderr, []);
 });
+
+test("POST /api/draft accepts compact requests without embedded siteContext", async () => {
+  const appPort = await getFreePort();
+  const codexHome = await mkdtemp(path.join(os.tmpdir(), "rankwell-codex-home-"));
+  const child = spawn(process.execPath, ["server.js"], {
+    cwd: projectRoot,
+    env: {
+      ...process.env,
+      CODEX_HOME: codexHome,
+      PORT: String(appPort),
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  try {
+    await waitForApp(appPort, child);
+    const response = await fetch(`http://127.0.0.1:${appPort}/api/draft`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        input: { url: "https://example.com", domain: "example.com", planLength: 7 },
+        calendarItem: { title: "Example topic", keyword: "example keyword" },
+        existingTitles: [],
+      }),
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200, JSON.stringify(payload));
+    assert.equal(payload.provider, "local-rules");
+    assert.equal(payload.draft.title, "Example topic");
+  } finally {
+    await stopChild(child);
+  }
+});
+
+test("POST /api/draft routes refresh and expand modes to opportunity briefs", async () => {
+  const appPort = await getFreePort();
+  const codexHome = await mkdtemp(path.join(os.tmpdir(), "rankwell-codex-home-"));
+  const child = spawn(process.execPath, ["server.js"], {
+    cwd: projectRoot,
+    env: {
+      ...process.env,
+      CODEX_HOME: codexHome,
+      PORT: String(appPort),
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  try {
+    await waitForApp(appPort, child);
+    const siteContext = {
+      ok: true,
+      startUrl: "https://example.com/",
+      pages: [
+        {
+          url: "https://example.com/blog/content-brief",
+          title: "Content Brief Workflow",
+          h1: "How to build content briefs",
+          pageText: "A workflow for content briefs, approvals, examples, and publishing.",
+        },
+      ],
+    };
+    const baseBody = {
+      input: { url: "https://example.com", domain: "example.com", planLength: 7 },
+      existingTitles: [],
+      siteContext,
+    };
+    const refreshResponse = await fetch(`http://127.0.0.1:${appPort}/api/draft`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...baseBody,
+        calendarItem: {
+          id: "plan-refresh-1",
+          title: "Refresh content brief template",
+          keyword: "content brief template",
+          draftMode: "refreshBrief",
+          opportunityType: "refresh",
+          targetUrl: "https://example.com/blog/content-brief",
+          opportunityMetrics: { impressions: 800, clicks: 8, ctr: 0.01, position: 12.4 },
+          recommendedActions: ["Rewrite title", "Add FAQ"],
+        },
+      }),
+    });
+    const refreshPayload = await refreshResponse.json();
+
+    assert.equal(refreshResponse.status, 200, JSON.stringify(refreshPayload));
+    assert.equal(refreshPayload.provider, "opportunity-rules");
+    assert.equal(refreshPayload.draft.draftMode, "refreshBrief");
+    assert.equal(refreshPayload.draft.sourceCalendarItemId, "plan-refresh-1");
+    assert.equal(refreshPayload.draft.targetUrl, "https://example.com/blog/content-brief");
+    assert.equal(refreshPayload.draft.templateId, "refreshBrief");
+    assert.ok(refreshPayload.draft.blocks.some((block) => /Title|Meta/i.test(block.heading)));
+
+    const expandResponse = await fetch(`http://127.0.0.1:${appPort}/api/draft`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...baseBody,
+        calendarItem: {
+          id: "plan-expand-1",
+          title: "Expand Content Brief Workflow",
+          keyword: "content brief examples",
+          draftMode: "expandBrief",
+          opportunityType: "expand",
+          targetUrl: "https://example.com/blog/content-brief",
+          queries: [
+            { query: "content brief template", impressions: 800 },
+            { query: "content brief example", impressions: 520 },
+          ],
+        },
+      }),
+    });
+    const expandPayload = await expandResponse.json();
+
+    assert.equal(expandResponse.status, 200, JSON.stringify(expandPayload));
+    assert.equal(expandPayload.provider, "opportunity-rules");
+    assert.equal(expandPayload.draft.draftMode, "expandBrief");
+    assert.equal(expandPayload.draft.sourceCalendarItemId, "plan-expand-1");
+    assert.equal(expandPayload.draft.templateId, "expandBrief");
+    assert.ok(expandPayload.draft.blocks.some((block) => /Insertion|section/i.test(`${block.heading} ${block.body}`)));
+  } finally {
+    await stopChild(child);
+  }
+});
+
+test("POST /api/draft rejects governance tasks with a clear JSON error", async () => {
+  const appPort = await getFreePort();
+  const codexHome = await mkdtemp(path.join(os.tmpdir(), "rankwell-codex-home-"));
+  const child = spawn(process.execPath, ["server.js"], {
+    cwd: projectRoot,
+    env: {
+      ...process.env,
+      CODEX_HOME: codexHome,
+      PORT: String(appPort),
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  try {
+    await waitForApp(appPort, child);
+    const response = await fetch(`http://127.0.0.1:${appPort}/api/draft`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        input: { url: "https://example.com", domain: "example.com", planLength: 7 },
+        calendarItem: {
+          id: "plan-governance-1",
+          title: "Resolve split ranking for seo content planner",
+          keyword: "seo content planner",
+          draftMode: "governance",
+          opportunityType: "cannibalization",
+          targetUrl: "https://example.com/features/planner",
+        },
+        existingTitles: [],
+      }),
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.match(payload.error, /Governance task/i);
+  } finally {
+    await stopChild(child);
+  }
+});
+
+test("POST /api/draft rejects oversized request bodies with JSON error", async () => {
+  const appPort = await getFreePort();
+  const codexHome = await mkdtemp(path.join(os.tmpdir(), "rankwell-codex-home-"));
+  const child = spawn(process.execPath, ["server.js"], {
+    cwd: projectRoot,
+    env: {
+      ...process.env,
+      CODEX_HOME: codexHome,
+      PORT: String(appPort),
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  try {
+    await waitForApp(appPort, child);
+    const hugeSiteContext = {
+      ok: true,
+      pages: Array.from({ length: 50 }, (_, index) => ({
+        url: `https://example.com/page-${index}`,
+        pageText: "x".repeat(1800),
+      })),
+    };
+    const response = await fetch(`http://127.0.0.1:${appPort}/api/draft`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        input: { url: "https://example.com", domain: "example.com", planLength: 7 },
+        calendarItem: { title: "Example topic", keyword: "example keyword" },
+        existingTitles: [],
+        siteContext: hugeSiteContext,
+      }),
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.match(payload.error, /too large/i);
+  } finally {
+    await stopChild(child);
+  }
+});

@@ -125,6 +125,24 @@
               <dl id="provider-details" class="provider-details"></dl>
             </div>
 
+            <div id="gsc-card" class="provider-card gsc-card" aria-live="polite">
+              <div class="provider-card-header">
+                <span id="gsc-dot" class="provider-dot" aria-hidden="true"></span>
+                <span id="gsc-status-text">Checking Google Search Console...</span>
+              </div>
+              <dl id="gsc-details" class="provider-details"></dl>
+              <div class="gsc-actions">
+                <button id="gsc-connect" class="mini-action" type="button">Connect Google</button>
+                <button id="gsc-refresh" class="mini-action" type="button">Refresh</button>
+                <a
+                  class="gsc-help-link"
+                  href="https://search.google.com/search-console"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >Open Search Console</a>
+              </div>
+            </div>
+
             <p class="landing-footnote">Rule-based fallback available when Codex is not configured.</p>
 
             <div class="panel-actions">
@@ -170,8 +188,8 @@
               <button class="tab is-active" type="button" data-tab="strategy">Strategy</button>
               <button class="tab" type="button" data-tab="site">Site coverage</button>
               <button class="tab" type="button" data-tab="keywords">Search themes</button>
-              <button class="tab" type="button" data-tab="calendar">Content plan</button>
-              <button class="tab" type="button" data-tab="draft">Draft outline</button>
+              <button class="tab" type="button" data-tab="calendar">Opportunity plan</button>
+              <button class="tab" type="button" data-tab="draft">Drafts / briefs</button>
               <button class="tab" type="button" data-tab="checklist">Checklist</button>
               <button class="tab" type="button" data-tab="projects">Projects</button>
               <button class="tab" type="button" data-tab="history">History</button>
@@ -206,13 +224,17 @@
             </section>
 
             <section id="calendar" class="tab-panel">
+              <div class="section-kicker">
+                <p class="eyebrow">Opportunity-backed plan</p>
+                <p>GSC tasks, crawl fallback topics, and governance work share one execution plan.</p>
+              </div>
               <div id="calendar-list" class="calendar-list"></div>
             </section>
 
             <section id="draft" class="tab-panel">
               <div class="draft-toolbar">
                 <label>
-                  Draft topic
+                  Draft or brief
                   <select id="draft-selector"></select>
                 </label>
                 <div class="draft-toolbar-actions">
@@ -240,7 +262,7 @@
     </main>
 
     <footer class="app-meta" aria-label="Application information">
-      <span id="app-meta-version" class="app-meta-version">Rankwell v0.1.0</span>
+      <span id="app-meta-version" class="app-meta-version">Rankwell v0.2.0</span>
       <span class="app-meta-sep" aria-hidden="true">·</span>
       <nav class="app-meta-nav" aria-label="Info links">
         <button class="app-meta-link" type="button" data-info-panel="about">About</button>

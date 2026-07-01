@@ -4,6 +4,8 @@ import { buildRefreshCandidates } from "../lib/refresh-candidates.js";
 import { auditDraftFull } from "../lib/draft-quality-audit.js";
 import { faqFromBlocks, ctaFromBlocks, resolveDraftTemplate } from "../lib/draft-templates.js";
 import { normalizePlanLength } from "../lib/plan-length.js";
+import { normalizeOpportunity } from "../lib/seo-opportunities.js";
+import { buildOpportunityBackedPlan } from "../lib/opportunity-plan.js";
 import { inferPlacementUrl, voiceRules } from "./fallback-workflow.js";
 
 export const normalizeReferenceImages = (items) =>
@@ -78,6 +80,26 @@ const normalizeSiteContext = (siteContext, inputs) => {
   };
 };
 
+const normalizeGscPerformance = (performance) => {
+  const data = performance && typeof performance === "object" ? performance : {};
+  const dateRange = data.dateRange && typeof data.dateRange === "object" ? data.dateRange : {};
+  return {
+    status: data.status || "not-connected",
+    message: data.message || "",
+    propertyUrl: data.propertyUrl || "",
+    rowCount: Number(data.rowCount || 0),
+    totalClicks: Number(data.totalClicks || 0),
+    totalImpressions: Number(data.totalImpressions || 0),
+    averageCtr: Number(data.averageCtr || 0),
+    averagePosition: Number(data.averagePosition || 0),
+    dateRange: {
+      startDate: dateRange.startDate || "",
+      endDate: dateRange.endDate || "",
+    },
+    limitations: Array.isArray(data.limitations) ? data.limitations.slice(0, 6).map((item) => String(item)) : [],
+  };
+};
+
 export const normalizeDraft = (draft, context = {}) => {
   const calendarItem = context.calendarItem || {};
   const siteContext = context.siteContext || null;
@@ -99,6 +121,7 @@ export const normalizeDraft = (draft, context = {}) => {
         `A practical ${calendarItem.format || "guide"} about ${calendarItem.keyword || inputs.category || inputs.domain}.`,
       ),
     blocks: Array.isArray(draft.blocks) ? draft.blocks : [],
+    sections: Array.isArray(draft.sections) ? draft.sections : [],
     cta:
       typeof draft.cta === "string"
         ? draft.cta
@@ -110,6 +133,11 @@ export const normalizeDraft = (draft, context = {}) => {
       : faqFromBlocks(draft.blocks),
     placement: draft.placement || template.label,
     placementUrl: draft.placementUrl || draft.publishUrl || "",
+    targetUrl: draft.targetUrl || draft.placementUrl || draft.publishUrl || calendarItem.targetUrl || "",
+    sourceCalendarItemId: draft.sourceCalendarItemId || calendarItem.id || "",
+    sourceOpportunityId: draft.sourceOpportunityId || calendarItem.sourceOpportunityId || "",
+    opportunityType: draft.opportunityType || calendarItem.opportunityType || "crawlFallback",
+    draftMode: draft.draftMode || calendarItem.draftMode || "newPageDraft",
     placementStrategy: draft.placementStrategy || "",
     evidenceRefs: Array.isArray(draft.evidenceRefs)
       ? draft.evidenceRefs.map((item) =>
@@ -175,12 +203,22 @@ export const normalizeWorkflow = (workflow, fallbackInputs) => {
     domain: workflow.inputs?.domain || fallbackInputs.domain,
   };
   const planLength = normalizePlanLength(inputs.planLength);
-  const rawCalendar = Array.isArray(workflow.calendar) ? workflow.calendar.slice(0, planLength) : [];
+  const inputCalendar = Array.isArray(workflow.calendar) ? workflow.calendar : [];
   const strategy = workflow.strategy && typeof workflow.strategy === "object" ? workflow.strategy : {};
   const contentPillars = Array.isArray(strategy.contentPillars) ? strategy.contentPillars.join(", ") : "";
   const workflowSteps = Array.isArray(strategy.workflow) ? strategy.workflow.join(" ") : "";
+  const opportunities = Array.isArray(strategy.opportunities)
+    ? strategy.opportunities.slice(0, 16).map((item) => normalizeOpportunity(item))
+    : [];
 
   const siteContext = normalizeSiteContext(workflow.siteContext, inputs);
+  const rawCalendar = buildOpportunityBackedPlan({
+    opportunities,
+    fallbackCalendar: inputCalendar,
+    planLength,
+    siteContext,
+    inputs,
+  });
   const refreshCandidates =
     Array.isArray(strategy.refreshCandidates) && strategy.refreshCandidates.length > 0
       ? strategy.refreshCandidates.slice(0, 12)
@@ -205,6 +243,7 @@ export const normalizeWorkflow = (workflow, fallbackInputs) => {
       contentGap: strategy.contentGap || contentPillars || "Search themes, planning notes, draft outlines, and refresh targets.",
       publishingRule: strategy.publishingRule || workflowSteps || "Plan, draft, edit, publish, measure, and refresh.",
       refreshCandidates,
+      opportunities,
     },
     keywords: Array.isArray(workflow.keywords)
       ? workflow.keywords.slice(0, 12).map((keyword) => ({
@@ -215,10 +254,14 @@ export const normalizeWorkflow = (workflow, fallbackInputs) => {
         }))
       : [],
     calendar: calendarAudit.items,
-    calendarAudit: workflow.calendarAudit || calendarAudit.summary,
+    calendarAudit: calendarAudit.summary,
     drafts: Array.isArray(workflow.drafts)
       ? workflow.drafts.slice(0, planLength).map((draft, index) => {
-          const calendarItem = rawCalendar[index] || rawCalendar[0] || {};
+          const calendarItem =
+            rawCalendar.find((item) => item.id && item.id === draft.sourceCalendarItemId) ||
+            rawCalendar[index] ||
+            rawCalendar[0] ||
+            {};
           const normalized = normalizeDraft(draft, {
             calendarItem: { ...calendarItem, placement: draft.placement || calendarItem.placement },
             siteContext,
@@ -234,5 +277,6 @@ export const normalizeWorkflow = (workflow, fallbackInputs) => {
       ? workflow.checklist.slice(0, 24).map((item) => normalizeChecklistItem(item))
       : checklistItems.map((item) => normalizeChecklistItem(item)),
     siteContext,
+    gscPerformance: normalizeGscPerformance(workflow.gscPerformance),
   };
 };

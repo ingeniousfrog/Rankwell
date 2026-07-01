@@ -28,6 +28,8 @@ import {
 } from "./client/local-projects.js";
 import { draftToMarkdown, visualPlanToSpec, workflowToMarkdown } from "./client/markdown-export.js";
 import { normalizeDraft, normalizeWorkflow } from "./client/workflow-normalize.js";
+import { buildDraftRequestPayload } from "./client/draft-request.js";
+import { draftHasRegeneratableSource, findCalendarItemForDraft } from "./client/draft-selection.js";
 import { normalizePlanLength } from "./lib/plan-length.js";
 import { getVisibleProgressStages } from "./lib/generate-progress.js";
 import { auditSitePages } from "./lib/page-audit.js";
@@ -50,6 +52,11 @@ const providerCard = document.querySelector("#provider-card");
 const providerDot = document.querySelector("#provider-dot");
 const providerStatusText = document.querySelector("#provider-status-text");
 const providerDetails = document.querySelector("#provider-details");
+const gscCard = document.querySelector("#gsc-card");
+const gscStatusText = document.querySelector("#gsc-status-text");
+const gscDetails = document.querySelector("#gsc-details");
+const gscConnectButton = document.querySelector("#gsc-connect");
+const gscRefreshButton = document.querySelector("#gsc-refresh");
 const newAnalysisButton = document.querySelector("#new-analysis");
 const exportMarkdownButton = document.querySelector("#export-markdown");
 const exportJsonButton = document.querySelector("#export-json");
@@ -443,14 +450,11 @@ const replaceDraftInWorkflow = (index, draft) => {
   renderDrafts(currentWorkflow, index);
 };
 
-const findCalendarItemForDraft = (draft) => {
-  if (!currentWorkflow?.calendar?.length || !draft?.title) return null;
-  return currentWorkflow.calendar.find((item) => item.title === draft.title) || null;
-};
-
 const updateRegenerateDraftButton = () => {
   if (!regenerateDraftButton) return;
-  regenerateDraftButton.disabled = !currentWorkflow?.drafts?.length;
+  const draft = currentWorkflow?.drafts?.[Number(draftSelector?.value || 0)];
+  regenerateDraftButton.disabled = !draftHasRegeneratableSource(draft, currentWorkflow?.calendar || []);
+  regenerateDraftButton.textContent = draft?.draftMode === "refreshBrief" || draft?.draftMode === "expandBrief" ? "Regenerate brief" : "Regenerate";
 };
 
 const DRAFT_STAGE_LABELS = ["Planning…", "Composing…", "Writing…", "Auditing…", "Revising…"];
@@ -477,17 +481,17 @@ const requestDraftFromApi = async (calendarItem, { replaceIndex, progressButton 
   const stopProgress = runDraftStageProgress(progressButton);
   let response;
   try {
+    const requestPayload = buildDraftRequestPayload({
+      input: getInputs(),
+      calendarItem,
+      existingTitles,
+    });
     response = await fetchWithTimeout(
       "/api/draft",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          input: getInputs(),
-          calendarItem,
-          existingTitles,
-          siteContext: currentWorkflow?.siteContext || null,
-        }),
+        body: requestPayload.text,
       },
       DRAFT_TIMEOUT_MS,
     );
@@ -519,6 +523,11 @@ const requestDraftFromApi = async (calendarItem, { replaceIndex, progressButton 
   } else if (payload.draft?.draftRuntime) {
     draft.draftRuntime = payload.draft.draftRuntime;
   }
+  draft.sourceCalendarItemId = draft.sourceCalendarItemId || calendarItem.id || "";
+  draft.sourceOpportunityId = draft.sourceOpportunityId || calendarItem.sourceOpportunityId || "";
+  draft.opportunityType = draft.opportunityType || calendarItem.opportunityType || "crawlFallback";
+  draft.draftMode = draft.draftMode || calendarItem.draftMode || "newPageDraft";
+  draft.targetUrl = draft.targetUrl || calendarItem.targetUrl || calendarItem.placementUrl || "";
   if (!draft.placementUrl) {
     draft.placementUrl = inferPlacementUrl(
       draft.placement,
@@ -546,6 +555,10 @@ const requestDraftFromApi = async (calendarItem, { replaceIndex, progressButton 
 const generateDraftForCalendarItem = async (calendarItem, button) => {
   if (!currentWorkflow?.siteContext?.ok) {
     showToast("Re-analyze the site before generating drafts.");
+    return;
+  }
+  if (calendarItem.isDraftable === false || calendarItem.draftMode === "governance") {
+    showToast("Governance tasks are handled in the plan and export, not the draft pipeline.");
     return;
   }
   if (calendarItem.hasQaFailures) {
@@ -624,6 +637,44 @@ const refreshProviderStatus = async () => {
     providerCard.classList.remove("is-ready");
     providerStatusText.textContent = "Local AI server not detected. Rule-based generation is still available.";
     providerDetails.replaceChildren();
+  }
+};
+
+const refreshGscStatus = async () => {
+  if (!gscCard || !gscStatusText || !gscDetails) return;
+  try {
+    const response = await fetchWithTimeout("/api/gsc/status", {}, 10_000);
+    const status = await response.json();
+    const configured = Boolean(status.configured);
+    const authorized = Boolean(status.authorized);
+    gscCard.classList.toggle("is-ready", authorized);
+    gscCard.classList.toggle("is-missing", !configured);
+    gscCard.classList.toggle("is-pending", configured && !authorized);
+    gscStatusText.textContent = authorized
+      ? "Google Search Console connected"
+      : configured
+        ? "Connect Google Search Console for opportunity evidence"
+        : status.message || "Google Search Console OAuth is not configured";
+    gscDetails.replaceChildren(
+      renderProviderDetailRow("Data", "Own-site clicks, impressions, CTR, and position"),
+      renderProviderDetailRow("Scope", status.scope || "webmasters.readonly"),
+      renderProviderDetailRow("Redirect", status.redirectUri || "local callback"),
+      renderProviderDetailRow("Token", status.tokenPath || "~/.rankwell/gsc-token.json", status.tokenPath),
+      renderProviderDetailRow("Limit", "Low-volume and anonymized queries may be incomplete"),
+    );
+    if (gscConnectButton) {
+      gscConnectButton.disabled = !configured;
+      gscConnectButton.textContent = authorized ? "Reconnect" : "Connect Google";
+      gscConnectButton.title = configured
+        ? "Authorize a Google account with verified Search Console access for this site."
+        : "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET before connecting.";
+    }
+  } catch {
+    gscCard.classList.add("is-missing");
+    gscCard.classList.remove("is-ready", "is-pending");
+    gscStatusText.textContent = "Google Search Console status is unavailable.";
+    gscDetails.replaceChildren();
+    if (gscConnectButton) gscConnectButton.disabled = true;
   }
 };
 
@@ -752,6 +803,107 @@ const renderWorkflowBanner = () => {
   `;
 };
 
+const OPPORTUNITY_TYPE_LABELS = {
+  refresh: "Refresh",
+  expand: "Expand",
+  newPage: "New page",
+  cannibalization: "Cannibalization",
+};
+
+const formatMetricNumber = (value) => {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? new Intl.NumberFormat().format(Math.round(number)) : "0";
+};
+
+const formatMetricPercent = (value) => {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? `${(number * 100).toFixed(1)}%` : "0.0%";
+};
+
+const formatPosition = (value) => {
+  const number = Number(value || 0);
+  return Number.isFinite(number) && number > 0 ? number.toFixed(1) : "n/a";
+};
+
+const renderOpportunityTarget = (item) => {
+  if (item.page) return renderPageLink(item.page, "Target URL");
+  if (Array.isArray(item.urls) && item.urls.length > 0) {
+    return item.urls.map((url) => renderPageLink(url, url)).join("<br>");
+  }
+  return "No suitable landing page found";
+};
+
+const renderOpportunityItem = (item) => {
+  const label = OPPORTUNITY_TYPE_LABELS[item.type] || item.type || "Opportunity";
+  const metrics = item.metrics || {};
+  const queryLine = item.query ? `<span class="opportunity-query">${escapeHtml(item.query)}</span>` : "";
+  const relatedQueries = Array.isArray(item.queries) && item.queries.length
+    ? `<ul class="opportunity-query-list">${item.queries
+        .slice(0, 5)
+        .map((query) => {
+          const queryText = typeof query === "string" ? query : query.query;
+          const suffix =
+            typeof query === "object" && query.impressions
+              ? ` · ${formatMetricNumber(query.impressions)} impressions`
+              : "";
+          return `<li>${escapeHtml(queryText || "")}${escapeHtml(suffix)}</li>`;
+        })
+        .join("")}</ul>`
+    : "";
+  const actions = Array.isArray(item.recommendedActions) && item.recommendedActions.length
+    ? `<ul class="opportunity-actions">${item.recommendedActions.map((action) => `<li>${escapeHtml(action)}</li>`).join("")}</ul>`
+    : "";
+  return `
+    <article class="opportunity-item is-${escapeHtml(item.type || "task")} is-${escapeHtml(item.priority || "medium")}">
+      <div class="opportunity-header">
+        <span class="opportunity-type">${escapeHtml(label)}</span>
+        <span class="opportunity-priority">${escapeHtml(item.priority || "medium")}</span>
+      </div>
+      <h4>${escapeHtml(item.title || label)}</h4>
+      ${queryLine}
+      <div class="opportunity-metrics">
+        <span>${formatMetricNumber(metrics.impressions)} impressions</span>
+        <span>${formatMetricNumber(metrics.clicks)} clicks</span>
+        <span>${formatMetricPercent(metrics.ctr)} CTR</span>
+        <span>Avg pos ${escapeHtml(formatPosition(metrics.position))}</span>
+      </div>
+      <p class="opportunity-target">${renderOpportunityTarget(item)}</p>
+      <p>${escapeHtml(item.reason || "")}</p>
+      ${relatedQueries}
+      ${actions}
+    </article>
+  `;
+};
+
+const renderGscPerformanceSummary = (performance = {}) => {
+  const status = performance.status || "not-connected";
+  const dateRange = performance.dateRange || {};
+  const range =
+    dateRange.startDate && dateRange.endDate
+      ? `${dateRange.startDate} to ${dateRange.endDate}`
+      : "No date range loaded";
+  return `
+    <div class="gsc-summary is-${escapeHtml(status)}">
+      <div>
+        <span class="refresh-meta">Google Search Console</span>
+        <strong>${escapeHtml(performance.message || "Connect Google Search Console to add owned-site demand evidence.")}</strong>
+      </div>
+      <div class="opportunity-metrics">
+        <span>${formatMetricNumber(performance.rowCount)} rows</span>
+        <span>${formatMetricNumber(performance.totalImpressions)} impressions</span>
+        <span>${formatMetricPercent(performance.averageCtr)} CTR</span>
+        <span>Avg pos ${escapeHtml(formatPosition(performance.averagePosition))}</span>
+      </div>
+      <p>${escapeHtml(performance.propertyUrl || "No verified GSC property selected")} · ${escapeHtml(range)}</p>
+      ${
+        performance.limitations?.length
+          ? `<ul class="opportunity-limitations">${performance.limitations.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+          : ""
+      }
+    </div>
+  `;
+};
+
 const renderStrategy = (workflow) => {
   projectTitle.textContent = `${workflow.inputs.domain} planning workspace`;
   renderWorkflowBanner();
@@ -772,17 +924,25 @@ const renderStrategy = (workflow) => {
         : ""
   }`;
 
-  let refreshPanel = document.querySelector("#refresh-queue-panel");
-  if (!refreshPanel) {
-    refreshPanel = document.createElement("article");
-    refreshPanel.id = "refresh-queue-panel";
-    refreshPanel.className = "panel-block refresh-queue-panel";
-    document.querySelector("#strategy")?.appendChild(refreshPanel);
+  let opportunityPanel = document.querySelector("#opportunity-engine-panel");
+  if (!opportunityPanel) {
+    opportunityPanel = document.createElement("article");
+    opportunityPanel.id = "opportunity-engine-panel";
+    opportunityPanel.className = "panel-block refresh-queue-panel opportunity-engine-panel";
+    document.querySelector("#strategy")?.appendChild(opportunityPanel);
   }
 
   const candidates = workflow.strategy.refreshCandidates || [];
-  refreshPanel.innerHTML = `
-    <h3>Refresh queue</h3>
+  const opportunities = workflow.strategy.opportunities || [];
+  opportunityPanel.innerHTML = `
+    <h3>SEO Opportunity Engine</h3>
+    ${renderGscPerformanceSummary(workflow.gscPerformance)}
+    ${
+      opportunities.length
+        ? `<div class="opportunity-list">${opportunities.map((item) => renderOpportunityItem(item)).join("")}</div>`
+        : `<p>No GSC-backed opportunities are available yet. Connect Google Search Console with a verified property for this site, then re-run analysis.</p>`
+    }
+    <h3 class="panel-subheading">Crawl-only refresh signals</h3>
     ${
       candidates.length
         ? `<ul class="refresh-queue-list">${candidates
@@ -995,8 +1155,63 @@ const renderKeywords = (workflow) => {
   );
 };
 
+const formatGscMetricNumber = (value) => {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? String(Math.round(number)) : "0";
+};
+
+const formatGscCtr = (value) => {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? `${(number * 100).toFixed(1)}%` : "0.0%";
+};
+
+const formatGscPosition = (value) => {
+  const number = Number(value || 0);
+  return Number.isFinite(number) && number > 0 ? number.toFixed(1) : "n/a";
+};
+
+const opportunityBadgeLabel = (item) => {
+  const labels = {
+    refresh: "Refresh",
+    expand: "Expand",
+    newPage: "New page",
+    cannibalization: "Cannibalization",
+    crawlFallback: "Crawl fallback",
+  };
+  return labels[item.opportunityType] || "Plan item";
+};
+
+const planActionLabel = (item) => {
+  if (item.draftMode === "refreshBrief") return "Generate brief";
+  if (item.draftMode === "expandBrief") return "Generate section brief";
+  if (item.draftMode === "governance") return "Governance task";
+  return "Generate draft";
+};
+
+const draftDisplayLabel = (draft) => {
+  if (draft?.draftMode === "refreshBrief") return "Refresh brief";
+  if (draft?.draftMode === "expandBrief") return "Section expansion brief";
+  if (draft?.draftMode === "governance") return "Governance task";
+  return "Content draft";
+};
+
+const renderPlanMetrics = (item) => {
+  const metrics = item.opportunityMetrics || {};
+  const hasMetrics = Number(metrics.impressions || metrics.clicks || metrics.ctr || metrics.position) > 0;
+  if (!hasMetrics) return "";
+  return `
+    <div class="plan-metrics" aria-label="GSC metrics">
+      <span>${formatGscMetricNumber(metrics.impressions)} impressions</span>
+      <span>${formatGscMetricNumber(metrics.clicks)} clicks</span>
+      <span>${formatGscCtr(metrics.ctr)} CTR</span>
+      <span>Avg ${formatGscPosition(metrics.position)}</span>
+    </div>
+  `;
+};
+
 const renderCalendar = (workflow) => {
   const draftTitles = new Set(workflow.drafts.map((draft) => draft.title));
+  const draftSourceIds = new Set(workflow.drafts.map((draft) => draft.sourceCalendarItemId).filter(Boolean));
   let summaryPanel = document.querySelector("#calendar-audit-panel");
   if (!summaryPanel) {
     summaryPanel = document.createElement("article");
@@ -1008,8 +1223,8 @@ const renderCalendar = (workflow) => {
   const audit = workflow.calendarAudit || {};
   const failedItems = (workflow.calendar || []).filter((item) => item.hasQaFailures);
   summaryPanel.innerHTML = `
-    <h3>Content plan review</h3>
-    <p>${escapeHtml(audit.total || workflow.calendar.length)} topics planned · ${escapeHtml(audit.failures || failedItems.length)} need title or keyword fixes · ${escapeHtml(audit.warnings || 0)} warnings</p>
+    <h3>Opportunity-backed plan review</h3>
+    <p>${escapeHtml(audit.total || workflow.calendar.length)} tasks planned · ${escapeHtml(audit.failures || failedItems.length)} need fixes · ${escapeHtml(audit.warnings || 0)} warnings</p>
     ${
       failedItems.length
         ? `<ul class="calendar-audit-list">${failedItems
@@ -1020,32 +1235,45 @@ const renderCalendar = (workflow) => {
               return `<li><strong>Day ${escapeHtml(item.day)}</strong>: ${escapeHtml(issue?.detail || "Needs review")}${escapeHtml(suggestion)}</li>`;
             })
             .join("")}</ul>`
-        : `<p>All calendar titles pass the audience-facing headline check.</p>`
+        : `<p>All plan tasks have enough structure to generate the right draft, brief, or governance action.</p>`
     }
   `;
 
   calendarList.replaceChildren(
     ...workflow.calendar.map((item, index) => {
-      const alreadyGenerated = draftTitles.has(item.title);
+      const alreadyGenerated = (item.id && draftSourceIds.has(item.id)) || draftTitles.has(item.title);
       const failedCheck = (item.qaChecks || []).find((check) => check.status === "fail");
       const warnCheck = (item.qaChecks || []).find((check) => check.status === "warn");
       const qaLabel = failedCheck ? "Needs fix" : warnCheck ? "Review" : "Ready";
       const qaClass = failedCheck ? "is-fail" : warnCheck ? "is-warn" : "is-pass";
+      const draftable = item.isDraftable !== false && item.draftMode !== "governance";
+      const actionLabel = planActionLabel(item);
+      const typeClass = String(item.opportunityType || "crawlFallback").replace(/[^a-z0-9-]/gi, "");
       const row = document.createElement("article");
-      row.className = `calendar-item${failedCheck ? " has-calendar-fail" : ""}`;
+      row.className = `calendar-item calendar-item-${typeClass}${failedCheck ? " has-calendar-fail" : ""}`;
       row.dataset.index = String(index);
       row.innerHTML = `
         <span class="day-pill">Day ${escapeHtml(item.day)}</span>
         <div>
+          <div class="plan-badges">
+            <span class="opportunity-badge">${escapeHtml(opportunityBadgeLabel(item))}</span>
+            <span class="intent-pill">${escapeHtml(item.actionLabel || actionLabel)}</span>
+          </div>
           <strong>${escapeHtml(item.title)}</strong>
           <p>${escapeHtml(item.keyword)}${item.placement ? ` · ${escapeHtml(item.placement)}` : ""}</p>
+          ${
+            item.targetUrl
+              ? `<p class="calendar-target">Target: ${renderPageLink(item.targetUrl, item.targetUrl)}</p>`
+              : ""
+          }
+          ${renderPlanMetrics(item)}
           ${item.suggestedTitle ? `<p class="calendar-suggestion">Suggested title: ${escapeHtml(item.suggestedTitle)}</p>` : ""}
         </div>
         <div class="calendar-actions">
           <span class="calendar-qa ${qaClass}">${escapeHtml(qaLabel)}</span>
           <span class="intent-pill">${escapeHtml(item.intent)} · ${escapeHtml(item.format)}</span>
-          <button class="mini-action" type="button" data-generate-draft="${index}" ${alreadyGenerated || failedCheck ? "disabled" : ""}>
-            ${alreadyGenerated ? "Added" : failedCheck ? "Fix first" : "Generate"}
+          <button class="mini-action" type="button" data-generate-draft="${index}" ${alreadyGenerated || failedCheck || !draftable ? "disabled" : ""}>
+            ${alreadyGenerated ? "Added" : failedCheck ? "Fix first" : draftable ? actionLabel : "Governance task"}
           </button>
         </div>
       `;
@@ -1175,7 +1403,7 @@ const draftToHtml = (draft) => {
       : "";
 
   return `
-  <p class="eyebrow">Content draft</p>
+  <p class="eyebrow">${escapeHtml(draftDisplayLabel(draft))}</p>
   <h3>${escapeHtml(draft.title)}</h3>
   <p class="draft-template-pill">${escapeHtml(draft.templateLabel || draft.templateId || "Blog article")}${
     draft.placementStrategy ? ` · ${escapeHtml(draft.placementStrategy)}` : ""
@@ -1232,7 +1460,7 @@ const renderDrafts = (workflow, selectedIndex = 0) => {
     ...workflow.drafts.map((draft, index) => {
       const option = document.createElement("option");
       option.value = String(index);
-      option.textContent = draft.title;
+      option.textContent = `${draftDisplayLabel(draft)} · ${draft.title}`;
       return option;
     }),
   );
@@ -1418,7 +1646,9 @@ newAnalysisButton.addEventListener("click", () => {
 
 draftSelector.addEventListener("change", () => {
   const index = Number(draftSelector.value);
-  articleDraft.innerHTML = draftToHtml(currentWorkflow.drafts[index]);
+  const draft = currentWorkflow?.drafts?.[index];
+  articleDraft.innerHTML = draft ? draftToHtml(draft) : `<p>No draft selected.</p>`;
+  updateRegenerateDraftButton();
 });
 
 calendarList.addEventListener("click", (event) => {
@@ -1448,9 +1678,14 @@ regenerateDraftButton?.addEventListener("click", async () => {
   const draft = currentWorkflow.drafts[index];
   if (!draft) return;
 
-  const calendarItem = findCalendarItemForDraft(draft);
+  const calendarItem = findCalendarItemForDraft(draft, currentWorkflow.calendar);
   if (!calendarItem) {
-    showToast("Could not match this draft to a calendar entry.");
+    showToast("Could not match this draft to a plan item. Re-analyze before regenerating.");
+    return;
+  }
+  if (calendarItem.isDraftable === false) {
+    showToast("This is a governance task and cannot be regenerated as a draft.");
+    updateRegenerateDraftButton();
     return;
   }
   regenerateDraftButton.disabled = true;
@@ -1460,7 +1695,6 @@ regenerateDraftButton?.addEventListener("click", async () => {
   } catch (error) {
     showToast(formatDraftError(error));
   } finally {
-    regenerateDraftButton.textContent = "Regenerate";
     updateRegenerateDraftButton();
   }
 });
@@ -1493,6 +1727,19 @@ importPackageButton.addEventListener("click", () => {
 
 importPackageInput.addEventListener("change", () => {
   importWorkflowPackage(importPackageInput.files?.[0]);
+});
+
+gscConnectButton?.addEventListener("click", () => {
+  if (gscConnectButton.disabled) {
+    showToast("Configure Google OAuth credentials before connecting Search Console.");
+    return;
+  }
+  window.open("/api/gsc/auth/start", "rankwell-gsc-oauth", "width=560,height=720");
+});
+
+gscRefreshButton?.addEventListener("click", async () => {
+  await refreshGscStatus();
+  showToast("Google Search Console status refreshed");
 });
 
 projectList.addEventListener("click", (event) => {
@@ -1529,6 +1776,7 @@ projectList.addEventListener("click", (event) => {
 
 setAppPhase("landing");
 refreshProviderStatus();
+refreshGscStatus();
 initAppMeta();
 
 window.addEventListener("pageshow", (event) => {
@@ -1536,4 +1784,5 @@ window.addEventListener("pageshow", (event) => {
     enterLanding();
     setGenerateBusy(false);
   }
+  refreshGscStatus();
 });

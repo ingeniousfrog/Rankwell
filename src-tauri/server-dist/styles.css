@@ -703,6 +703,11 @@ body.is-workspace .workspace-submit {
   background: #fef2f2;
 }
 
+.provider-card.is-pending {
+  border-color: rgba(202, 138, 4, 0.2);
+  background: #fffbeb;
+}
+
 .provider-card-header {
   display: flex;
   align-items: center;
@@ -728,6 +733,11 @@ body.is-workspace .workspace-submit {
   box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
 }
 
+.provider-card.is-pending .provider-dot {
+  background: var(--gold);
+  box-shadow: 0 0 0 3px rgba(202, 138, 4, 0.14);
+}
+
 #provider-status-text {
   color: var(--text);
   font-size: 12px;
@@ -741,6 +751,18 @@ body.is-workspace .workspace-submit {
 
 .provider-card.is-missing #provider-status-text {
   color: #b91c1c;
+}
+
+.provider-card.is-ready #gsc-status-text {
+  color: #15803d;
+}
+
+.provider-card.is-missing #gsc-status-text {
+  color: #b91c1c;
+}
+
+.provider-card.is-pending #gsc-status-text {
+  color: #a16207;
 }
 
 .provider-details {
@@ -796,6 +818,33 @@ body.is-workspace .workspace-submit {
   border-color: var(--line-strong);
   color: var(--text);
   transform: none;
+}
+
+.gsc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.gsc-actions .mini-action {
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 10px;
+}
+
+.gsc-help-link {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.gsc-help-link:hover {
+  color: var(--text);
 }
 
 .landing-footnote {

@@ -7,13 +7,13 @@
 
 <p align="center"><strong>本地优先、证据驱动的 SEO 内容规划</strong></p>
 
-爬取公开站点 · 搜索主题 · 编辑日历 · 有据草稿大纲
+爬取公开站点 · GSC 机会发现层 · 编辑日历 · 有据草稿大纲
 
 <br>
 
 ![Node.js 18+](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)
 ![Apache License 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
-![v0.1.0](https://img.shields.io/badge/version-0.1.0-007ec6)
+![v0.2.0](https://img.shields.io/badge/version-0.2.0-007ec6)
 
 <br>
 
@@ -29,6 +29,7 @@ Rankwell 回答的问题是：**「这个站点接下来该发什么内容？」
 |:--:|------|----------|
 | 🕸 | **[站点爬取](#站点爬取与覆盖报告)** | `robots.txt` → sitemap → 同域爬取；覆盖报告、页面类型、失败记录与时间线 |
 | 🔎 | **[搜索主题](#搜索主题)** | 带意图、契合度、难度与问题变体的关键词候选 |
+| 📈 | **[SEO 机会发现层](#seo-机会发现层)** | Google Search Console 证据驱动的 Refresh、Expand、New page、Cannibalization 任务 |
 | 📅 | **[内容日历](#内容日历)** | 可配置长度的编辑计划（5–30 篇），映射格式与版位 |
 | ✍️ | **[有据草稿](#有据草稿)** | 含 `evidenceRefs`、视觉方案与自动化 QA 的页面感知大纲 |
 
@@ -46,13 +47,20 @@ flowchart TB
   Crawl["站点爬取\nrobots · sitemap · 页面"]
   Context["siteContext\n覆盖 · 摘录 · 版位"]
   Assumptions["规划假设\n品类 · 受众 · 目标 · 语气"]
+  GSC["Google Search Console\nquery · page · CTR · 平均排名"]
+  Opportunity["SEO 机会发现层\nRefresh · Expand · New page · Cannibalization"]
   Themes["搜索主题\n关键词 · 意图 · 难度"]
   Calendar["内容日历\n5–30 篇选题"]
   Draft["有据草稿\n大纲 · 证据 · QA"]
   Export["导出\nMarkdown · JSON · 项目包"]
 
   URL --> Crawl --> Context --> Assumptions
-  Assumptions --> Themes --> Calendar --> Draft --> Export
+  Assumptions --> Themes
+  GSC --> Opportunity
+  Context --> Opportunity
+  Themes --> Calendar
+  Opportunity --> Calendar
+  Calendar --> Draft --> Export
 
   Provider["Codex CLI OAuth\n~/.codex/auth.json"]
   Fallback["确定性规则\nclient/fallback-workflow.js"]
@@ -73,11 +81,12 @@ flowchart TB
   end
 
   subgraph Server["server.js — 本地 API :5279"]
-    API["REST\n/api/generate · /api/draft · /api/provider/status"]
+    API["REST\n/api/generate · /api/draft · /api/provider/status\n/api/gsc/status · /api/gsc/auth/start"]
   end
 
   subgraph Engines["规划引擎"]
     Crawl["site-context.js · site-discovery.js\nhtml-extractor.js"]
+    Opportunity["seo-opportunities.js · gsc-client.js"]
     Prompts["ai-prompts.js"]
     Pipeline["draft-pipeline.js\ndraft-compose · draft-quality-audit"]
     Rules["fallback-workflow.js\ndraft-templates · content-audit"]
@@ -85,11 +94,13 @@ flowchart TB
 
   subgraph Storage["本地（浏览器）"]
     Projects["localStorage 项目\nJSON 包导入/导出"]
+    GscTokens["~/.rankwell/gsc-token.json\nGoogle OAuth token"]
   end
 
   Web --> API
   Desktop --> API
   API --> Crawl
+  API --> Opportunity
   API --> Prompts
   API --> Pipeline
   API --> Rules
@@ -110,7 +121,7 @@ flowchart TB
 | **数据驻留** | 厂商云端 | 提示词发往提供商 | 爬取与项目留本地；无云端规划后端 |
 | **最适合** | 已采购 SEO 套件的团队 | 快速头脑风暴 | 需要**可审阅、可导出**发布前规划的操作者 |
 
-**搭配使用：** 排名追踪或 CMS 负责**线上表现**；Rankwell 负责**结构化、有据可依的编辑计划** —— 不能替代分析、排名追踪或完整 CMS 工作流。
+**搭配使用：** 排名追踪、分析套件或 CMS 负责**线上监控与发布**；Rankwell 负责**结构化、有据可依的编辑计划**。GSC 数据用于发现内容机会，不提供连续排名监控。
 
 ## 功能详解
 
@@ -132,6 +143,19 @@ flowchart TB
 - 规划输入：产品品类、受众、转化目标、品牌语气
 - AI 自动推断，可在高级选项手动覆盖
 - Codex 不可用时由确定性引擎生成主题（[`client/fallback-workflow.js`](client/fallback-workflow.js)）
+
+### SEO 机会发现层
+
+连接 Google Search Console 后，Rankwell 会使用自有站点的一手表现证据：
+
+- 通过 Search Console API 读取已有 query、落地页、点击、曝光、CTR 与平均排名（[`lib/gsc-client.js`](lib/gsc-client.js)）
+- 从真实表现数据生成四类规划任务（[`lib/seo-opportunities.js`](lib/seo-opportunities.js)）：
+  - **Refresh** — 页面针对某词约排 8-30、有曝光但 CTR 偏低；建议改标题/描述、补直接回答、FAQ 或内部链接
+  - **Expand** — 一个已有页面吃到多组相关长尾词；建议增加子章节，而不是新写一篇重复文章
+  - **New page** — 有需求词，但爬取结果中没有合适落地页承接该意图
+  - **Cannibalization** — 同一查询分散到多个 URL；建议选择主 URL，合并、canonical 或重定向
+- 这是规划层，不是实时排名追踪：指标来自你已验证站点的 Search Console 平均值，不是第三方 SERP、竞品或全网搜索量数据
+- 未配置或未授权 GSC 时，Rankwell 仍会生成基于站内爬取证据的主题、日历与草稿，并明确标记 GSC 机会不可用
 
 ### 内容日历
 
@@ -168,7 +192,7 @@ flowchart TB
 
 ## Rankwell 不是什么
 
-- **不是排名追踪或分析面板** — 无 SERP 位置、流量或 GSC 集成
+- **不是排名追踪或分析面板** — GSC 数据用于内容机会发现，不做实时 SERP 监控、流量归因或竞品分析
 - **不是 CMS 或发布器** — 导出计划与草稿，不直接发到 WordPress、Webflow 等
 - **不是通用爬虫** — 仅为规划上下文做的有界同域爬取
 - **不能替代人工编辑** — QA 辅助审阅，不保证可直接发布的成稿
@@ -188,9 +212,33 @@ npm run start
 
 1. **输入** 公开网站 URL
 2. **调整** 计划长度、写作风格或高级规划字段
-3. **分析** — 爬取完成后生成主题、日历与起始草稿
-4. **审阅** 站点覆盖、主题、日历、草稿大纲与检查清单
-5. **导出** Markdown、JSON 或项目包
+3. **可选连接** Google Search Console（如果你拥有目标站点权限）
+4. **分析** — 爬取完成后，已授权时附加 GSC 机会，再生成主题、日历与起始草稿
+5. **审阅** 站点覆盖、机会任务、主题、日历、草稿大纲与检查清单
+6. **导出** Markdown、JSON 或项目包
+
+## 配置 Google Search Console（可选）
+
+Google Search Console 与 Search Console API 免费使用，但受配额限制。Rankwell 使用只读权限 `https://www.googleapis.com/auth/webmasters.readonly`；授权的 Google 账号必须对目标站点拥有已验证的 Search Console 访问权限。
+
+1. 为本地 Web 应用创建 Google OAuth Client。
+2. 添加本地回调地址，例如 `http://127.0.0.1:5279/api/gsc/oauth/callback`。
+3. 启动 Rankwell：
+
+```bash
+GOOGLE_CLIENT_ID="..." GOOGLE_CLIENT_SECRET="..." npm run start
+```
+
+4. 在左侧面板点击 **Connect Google**，授权拥有该站点 Search Console 权限的账号。
+
+Rankwell 默认将 OAuth token 保存在本机 `~/.rankwell/gsc-token.json`。可用 `RANKWELL_GSC_TOKEN_PATH` 覆盖 token 路径，或用 `RANKWELL_HOME` 移动 Rankwell 配置目录。
+
+GSC 限制需要明确：
+
+- Search Analytics 可按 `query`、`page`、`country`、`device` 分组，返回点击、曝光、CTR 与平均排名。
+- 低频与匿名化查询不会完整暴露，因此 GSC 不能代替外部关键词库。
+- API 每个搜索类型每天最多暴露 50,000 行；Rankwell 请求有界的 90 天 web 搜索窗口，并只在保存项目中保留摘要与机会证据。
+- 默认 Search Analytics 配额包含约每站点/每用户 1,200 次/分钟；Rankwell 在分析时使用一次有界查询，而不是持续轮询。
 
 ## 配置 Codex（可选）
 
@@ -232,6 +280,9 @@ codex login
 | 方法 | 端点 | 说明 |
 |------|------|------|
 | `GET` | `/api/provider/status` | Codex 认证状态与当前模型 |
+| `GET` | `/api/gsc/status` | Google Search Console OAuth/配置状态 |
+| `GET` | `/api/gsc/auth/start` | 启动本地 Google OAuth 授权 |
+| `GET` | `/api/gsc/opportunities?url=...` | 已授权时为 URL 生成 GSC 机会任务；可选 `country`、`device`、`startDate`、`endDate` 过滤 |
 | `POST` | `/api/generate` | 爬取站点并生成完整规划工作区 |
 | `POST` | `/api/draft` | 为单个日历条目生成草稿 |
 
@@ -286,6 +337,7 @@ codex login
 | 浏览器 `localStorage` | 已保存的 Rankwell 项目（UI） |
 | 导出的 `.json` 包 | 可移植项目导入/导出 |
 | `~/.codex/` | Codex CLI 认证与配置（可选 AI） |
+| `~/.rankwell/gsc-token.json` | Google Search Console OAuth token（可选机会证据） |
 
 爬取结果保存在会话/API 响应中 —— Rankwell 不会将站点数据上传至云端规划服务。
 
@@ -293,6 +345,8 @@ codex login
 
 - **公开 HTML 站点** — JS 重度 SPA 可能爬取上下文稀疏
 - **仅同域爬取** — 不支持跨域或需登录页面
+- **GSC 数据完整性** — Search Console 会隐藏部分低频/匿名化查询，且只限已授权 Google 账号能访问的站点属性
+- **没有外部关键词库** — fallback difficulty 是启发式规则；GSC 补充自有站点表现证据，但不提供竞品 SERP 难度或全网搜索量
 - **Codex：仅本地 CLI 会话** — 无浏览器内 OAuth 或内置 OpenAI API Key 界面
 - **目前仅 macOS 桌面版** — Tauri 通过 [GitHub Releases](https://github.com/ingeniousfrog/Rankwell/releases) 提供 **Apple Silicon** 与 **Intel** 双架构 DMG
 - **单端口** — 默认 `5279`；勿与已安装的桌面版同时在本机跑 `npm run start`
@@ -302,7 +356,7 @@ codex login
 
 Rankwell 提供 **macOS 桌面应用**（[`src-tauri/`](src-tauri/)）—— Tauri 2 壳捆绑 Node API sidecar 与静态 UI，终端用户无需单独 `npm run start`。
 
-**版本号** 来自 [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)（当前 `0.1.0`）。
+**版本号** 来自 [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)（当前 `0.2.0`）。
 
 ### 下载（macOS）
 
@@ -332,8 +386,8 @@ npm run tauri:build
 **产物路径：**
 
 ```text
-src-tauri/target/release/bundle/dmg/Rankwell_0.1.0_aarch64.dmg   # Apple Silicon
-src-tauri/target/release/bundle/dmg/Rankwell_0.1.0_x64.dmg        # Intel
+src-tauri/target/release/bundle/dmg/Rankwell_0.2.0_aarch64.dmg   # Apple Silicon
+src-tauri/target/release/bundle/dmg/Rankwell_0.2.0_x64.dmg        # Intel
 src-tauri/target/release/bundle/macos/Rankwell.app
 ```
 
@@ -350,7 +404,7 @@ xattr -cr /Applications/Rankwell.app
 ## 开发与测试
 
 ```bash
-npm test      # 71 项单元 / 集成测试
+npm test      # 91 项单元 / 集成测试
 npm run check # 服务端与客户端模块语法检查
 ```
 
@@ -361,6 +415,11 @@ npm run check # 服务端与客户端模块语法检查
 | `PORT` | `5279` | 本地 HTTP 服务端口 |
 | `CODEX_HOME` | `~/.codex` | Codex 配置与认证目录 |
 | `AI_MODEL` | Codex 配置或 `gpt-5.5` | 覆盖生成所用模型 |
+| `GOOGLE_CLIENT_ID` | 未设置 | Search Console 使用的 Google OAuth Client ID |
+| `GOOGLE_CLIENT_SECRET` | 未设置 | Search Console 使用的 Google OAuth Client Secret |
+| `GOOGLE_REDIRECT_URI` | `http://127.0.0.1:<PORT>/api/gsc/oauth/callback` | 在 Google Cloud 注册的 OAuth 回调地址 |
+| `RANKWELL_HOME` | `~/.rankwell` | Rankwell 本地配置目录 |
+| `RANKWELL_GSC_TOKEN_PATH` | `~/.rankwell/gsc-token.json` | 覆盖 Google Search Console token 路径 |
 | `ALLOW_PRIVATE_TARGETS` | 未设置 | 设为 `1` 以允许 localhost / 内网爬取目标 |
 
 ### 目录结构
@@ -371,7 +430,7 @@ rankwell/
 ├── app.js                  # 客户端逻辑
 ├── server.js               # 本地 API 服务
 ├── client/                 # UI 模块（导出、项目、工作流）
-├── lib/                    # 爬取、AI 提示词、草稿流水线
+├── lib/                    # 爬取、GSC 机会、AI 提示词、草稿流水线
 ├── test/                   # Node 测试套件
 ├── scripts/bundle-server.sh
 ├── src-tauri/              # Tauri 桌面壳 + bundled sidecar

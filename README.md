@@ -7,13 +7,13 @@
 
 <p align="center"><strong>Local-first, evidence-grounded SEO content planning</strong></p>
 
-Crawl a public site · search themes · editorial calendar · grounded draft outlines
+Crawl a public site · GSC opportunity engine · editorial calendar · grounded draft outlines
 
 <br>
 
 ![Node.js 18+](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)
 ![Apache License 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
-![v0.1.0](https://img.shields.io/badge/version-0.1.0-007ec6)
+![v0.2.0](https://img.shields.io/badge/version-0.2.0-007ec6)
 
 <br>
 
@@ -29,6 +29,7 @@ Rankwell answers **“what should this site publish next?”** by crawling real 
 |:--:|------------|--------------|
 | 🕸 | **[Site crawl](#site-crawl--coverage)** | `robots.txt` → sitemaps → same-origin crawl; coverage report, page types, failures, timeline |
 | 🔎 | **[Search themes](#search-themes)** | Keyword candidates with intent, fit, difficulty, and question variants |
+| 📈 | **[SEO Opportunity Engine](#seo-opportunity-engine)** | Google Search Console evidence for Refresh, Expand, New page, and Cannibalization tasks |
 | 📅 | **[Content calendar](#content-calendar)** | Configurable editorial plan (5–30 topics) mapped to formats and placements |
 | ✍️ | **[Grounded drafts](#grounded-drafts)** | Page-aware outlines with `evidenceRefs`, visual plans, and automated QA checks |
 
@@ -46,13 +47,20 @@ flowchart TB
   Crawl["Site crawl\nrobots · sitemaps · pages"]
   Context["siteContext\ncoverage · excerpts · placements"]
   Assumptions["Planning assumptions\ncategory · audience · goal · voice"]
+  GSC["Google Search Console\nqueries · pages · CTR · position"]
+  Opportunity["SEO Opportunity Engine\nrefresh · expand · new page · cannibalization"]
   Themes["Search themes\nkeywords · intent · difficulty"]
   Calendar["Content calendar\n5–30 topics"]
   Draft["Grounded draft\noutline · evidence · QA"]
   Export["Export\nMarkdown · JSON · project package"]
 
   URL --> Crawl --> Context --> Assumptions
-  Assumptions --> Themes --> Calendar --> Draft --> Export
+  Assumptions --> Themes
+  GSC --> Opportunity
+  Context --> Opportunity
+  Themes --> Calendar
+  Opportunity --> Calendar
+  Calendar --> Draft --> Export
 
   Provider["Codex CLI OAuth\n~/.codex/auth.json"]
   Fallback["Deterministic rules\nclient/fallback-workflow.js"]
@@ -73,11 +81,12 @@ flowchart TB
   end
 
   subgraph Server["server.js — local API :5279"]
-    API["REST\n/api/generate · /api/draft · /api/provider/status"]
+    API["REST\n/api/generate · /api/draft · /api/provider/status\n/api/gsc/status · /api/gsc/auth/start"]
   end
 
   subgraph Engines["Planning engines"]
     Crawl["site-context.js · site-discovery.js\nhtml-extractor.js"]
+    Opportunity["seo-opportunities.js · gsc-client.js"]
     Prompts["ai-prompts.js"]
     Pipeline["draft-pipeline.js\ndraft-compose · draft-quality-audit"]
     Rules["fallback-workflow.js\ndraft-templates · content-audit"]
@@ -85,11 +94,13 @@ flowchart TB
 
   subgraph Storage["Local (browser)"]
     Projects["localStorage projects\nimport / export JSON packages"]
+    GscTokens["~/.rankwell/gsc-token.json\nGoogle OAuth token"]
   end
 
   Web --> API
   Desktop --> API
   API --> Crawl
+  API --> Opportunity
   API --> Prompts
   API --> Pipeline
   API --> Rules
@@ -110,7 +121,7 @@ Draft generation is **evidence-grounded**: sections cite crawled URLs and excerp
 | **Data residency** | Vendor cloud | Prompt sent to provider | Crawl + projects stay local; no planner backend |
 | **Best for** | Teams already on a SEO suite | Quick brainstorming | Operators who want a **reviewable, exportable** plan before publishing |
 
-**Use together:** a rank tracker or CMS for **live performance**; Rankwell when you need a **structured, evidence-backed editorial plan** you can audit and export — not a replacement for analytics, rank tracking, or a full CMS workflow.
+**Use together:** a rank tracker, analytics suite, or CMS for **live monitoring and publishing**; Rankwell when you need a **structured, evidence-backed editorial plan** you can audit and export. GSC data is used to discover content opportunities, not to provide continuous rank monitoring.
 
 ## Features
 
@@ -132,6 +143,19 @@ Keyword planning tied to the crawled site:
 - Planning inputs: product category, audience, conversion goal, brand voice
 - AI-inferred defaults with manual override in Advanced options
 - Deterministic theme generation when Codex is unavailable ([`client/fallback-workflow.js`](client/fallback-workflow.js))
+
+### SEO Opportunity Engine
+
+Owned-site performance evidence from Google Search Console, when connected:
+
+- Reads the site's existing queries, landing pages, clicks, impressions, CTR, and average position through the Search Console API ([`lib/gsc-client.js`](lib/gsc-client.js))
+- Produces four planning task types from first-party evidence ([`lib/seo-opportunities.js`](lib/seo-opportunities.js)):
+  - **Refresh** — a page ranks around positions 8-30 with impressions but low CTR; revise title/meta, add a focused answer, FAQ, or internal links
+  - **Expand** — one existing page already receives related long-tail queries; add a subsection instead of publishing a duplicate article
+  - **New page** — demand exists but the crawl has no suitable landing page for the query intent
+  - **Cannibalization** — the same query is split across multiple URLs; choose a primary URL, merge, canonicalize, or redirect
+- Works as a planning layer, not a live rank tracker: metrics are Search Console averages for your verified property, not third-party SERP or competitor data
+- If GSC is not configured or authorized, Rankwell keeps generating crawl-grounded themes/calendar/drafts and clearly marks GSC-backed opportunities as unavailable
 
 ### Content calendar
 
@@ -168,7 +192,7 @@ Multi-stage draft pipeline per calendar item ([`lib/draft-pipeline.js`](lib/draf
 
 ## What Rankwell is not
 
-- **Not a rank tracker or analytics dashboard** — no SERP positions, traffic, or GSC integration
+- **Not a rank tracker or analytics dashboard** — GSC data is used for content opportunity discovery, not live SERP monitoring, traffic attribution, or competitor analysis
 - **Not a CMS or publisher** — exports plans and drafts; does not post to WordPress, Webflow, etc.
 - **Not a generic web scraper** — same-origin, bounded crawl for planning context only
 - **Not a replacement for human editors** — QA checks assist review; they do not guarantee publish-ready copy
@@ -188,9 +212,33 @@ Open [http://127.0.0.1:5279](http://127.0.0.1:5279) (or the URL printed in the t
 
 1. **Enter** a public website URL
 2. **Adjust** plan length, writing style, or advanced planning fields
-3. **Analyze** — crawl runs, then themes, calendar, and starter draft are generated
-4. **Review** site coverage, themes, calendar, draft outline, and checklist
-5. **Export** Markdown, JSON, or a project package
+3. **Optionally connect** Google Search Console if you own the site property
+4. **Analyze** — crawl runs, GSC opportunities are attached when authorized, then themes, calendar, and starter draft are generated
+5. **Review** site coverage, opportunities, themes, calendar, draft outline, and checklist
+6. **Export** Markdown, JSON, or a project package
+
+## Configure Google Search Console (optional)
+
+Google Search Console and the Search Console API are free to use, subject to usage limits. Rankwell uses the read-only scope `https://www.googleapis.com/auth/webmasters.readonly`; the connected Google account must have verified Search Console access to the target property.
+
+1. Create a Google OAuth client for a local web app.
+2. Add the local redirect URI, for example `http://127.0.0.1:5279/api/gsc/oauth/callback`.
+3. Start Rankwell with:
+
+```bash
+GOOGLE_CLIENT_ID="..." GOOGLE_CLIENT_SECRET="..." npm run start
+```
+
+4. In the left panel, click **Connect Google** and authorize the account that owns or can read the Search Console property.
+
+Rankwell stores the OAuth token locally at `~/.rankwell/gsc-token.json` by default. Override it with `RANKWELL_GSC_TOKEN_PATH` or use `RANKWELL_HOME` to move the Rankwell config directory.
+
+GSC limits to know:
+
+- Search Analytics can group by `query`, `page`, `country`, and `device`, returning clicks, impressions, CTR, and average position.
+- Low-volume and anonymized queries are not fully exposed, so GSC cannot replace an external keyword database.
+- The API exposes up to 50,000 rows per day per search type; Rankwell requests a bounded 90-day web-search window and keeps only summary/opportunity evidence in saved projects.
+- Default Search Analytics quota includes roughly 1,200 queries per minute per site and per user; Rankwell uses one bounded query during analysis rather than continuous polling.
 
 ## Configure Codex (optional)
 
@@ -232,6 +280,9 @@ Base URL: [http://127.0.0.1:5279](http://127.0.0.1:5279)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/provider/status` | Codex auth status and active model |
+| `GET` | `/api/gsc/status` | Google Search Console OAuth/config status |
+| `GET` | `/api/gsc/auth/start` | Start local Google OAuth authorization |
+| `GET` | `/api/gsc/opportunities?url=...` | Build GSC-backed opportunities for a URL when authorized; optional `country`, `device`, `startDate`, `endDate` filters |
 | `POST` | `/api/generate` | Crawl site and generate full planning workspace |
 | `POST` | `/api/draft` | Generate a single draft for one calendar item |
 
@@ -286,6 +337,7 @@ Base URL: [http://127.0.0.1:5279](http://127.0.0.1:5279)
 | Browser `localStorage` | Saved Rankwell projects (UI) |
 | Exported `.json` packages | Portable project import/export |
 | `~/.codex/` | Codex CLI auth and config (optional AI) |
+| `~/.rankwell/gsc-token.json` | Google Search Console OAuth token (optional opportunity evidence) |
 
 Crawl results are held in memory for the session/API response — Rankwell does not upload site data to a cloud planner backend.
 
@@ -293,6 +345,8 @@ Crawl results are held in memory for the session/API response — Rankwell does 
 
 - **Public HTML sites** — JavaScript-heavy SPAs may yield sparse crawl context
 - **Same-origin crawl only** — no cross-domain or authenticated page access
+- **GSC completeness** — Search Console hides some low-volume/anonymized queries and is limited to properties the connected Google account can access
+- **No external keyword database** — fallback keyword difficulty is heuristic; GSC adds owned-site performance evidence but not competitor SERP difficulty or global search volume
 - **Codex: local CLI session only** — no in-browser OAuth or built-in OpenAI API key UI
 - **macOS desktop only** today — Tauri bundle ships **Apple Silicon** and **Intel** DMGs via [GitHub Releases](https://github.com/ingeniousfrog/Rankwell/releases)
 - **Single port** — default `5279`; do not run `npm run start` and the installed desktop app simultaneously on the same port
@@ -302,7 +356,7 @@ Crawl results are held in memory for the session/API response — Rankwell does 
 
 Rankwell ships a **macOS desktop app** ([`src-tauri/`](src-tauri/)) — a Tauri 2 shell that bundles the Node API sidecar and static UI. End users do not need a separate `npm run start` terminal.
 
-**Version** is read from [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) (currently `0.1.0`).
+**Version** is read from [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) (currently `0.2.0`).
 
 ### Download (macOS)
 
@@ -332,8 +386,8 @@ npm run tauri:build
 **Output:**
 
 ```text
-src-tauri/target/release/bundle/dmg/Rankwell_0.1.0_aarch64.dmg   # Apple Silicon
-src-tauri/target/release/bundle/dmg/Rankwell_0.1.0_x64.dmg        # Intel
+src-tauri/target/release/bundle/dmg/Rankwell_0.2.0_aarch64.dmg   # Apple Silicon
+src-tauri/target/release/bundle/dmg/Rankwell_0.2.0_x64.dmg        # Intel
 src-tauri/target/release/bundle/macos/Rankwell.app
 ```
 
@@ -350,7 +404,7 @@ xattr -cr /Applications/Rankwell.app
 ## Development
 
 ```bash
-npm test      # 71 unit / integration tests
+npm test      # 91 unit / integration tests
 npm run check # syntax validation across server + client modules
 ```
 
@@ -361,6 +415,11 @@ Environment variables:
 | `PORT` | `5279` | Local HTTP server port |
 | `CODEX_HOME` | `~/.codex` | Codex configuration and auth directory |
 | `AI_MODEL` | from Codex config or `gpt-5.5` | Model override for generation |
+| `GOOGLE_CLIENT_ID` | unset | Google OAuth client ID for Search Console |
+| `GOOGLE_CLIENT_SECRET` | unset | Google OAuth client secret for Search Console |
+| `GOOGLE_REDIRECT_URI` | `http://127.0.0.1:<PORT>/api/gsc/oauth/callback` | OAuth redirect URI registered in Google Cloud |
+| `RANKWELL_HOME` | `~/.rankwell` | Rankwell local config directory |
+| `RANKWELL_GSC_TOKEN_PATH` | `~/.rankwell/gsc-token.json` | Override Google Search Console token path |
 | `ALLOW_PRIVATE_TARGETS` | unset | Set to `1` to allow localhost / private-network crawl targets |
 
 ### Project layout
@@ -371,7 +430,7 @@ rankwell/
 ├── app.js                  # Client application logic
 ├── server.js               # Local API server
 ├── client/                 # UI modules (export, projects, workflow)
-├── lib/                    # Crawl, AI prompts, draft pipeline
+├── lib/                    # Crawl, GSC opportunities, AI prompts, draft pipeline
 ├── test/                   # Node test runner suites
 ├── scripts/bundle-server.sh
 ├── src-tauri/              # Tauri desktop shell + bundled sidecar

@@ -1,6 +1,6 @@
 {
   "name": "rankwell",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,7 +9,7 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "test": "node --test test/*.test.js",
-    "check": "node --check server.js && node --check app.js && node --check client/app-meta.js && node --check client/error-messages.js && node --check client/checklist-taxonomy.js && node --check client/download.js && node --check client/fallback-workflow.js && node --check client/local-projects.js && node --check client/markdown-export.js && node --check client/workflow-normalize.js && node --check lib/ai-prompts.js && node --check lib/anti-ai-rules.js && node --check lib/codex-stream.js && node --check lib/content-audit.js && node --check lib/draft-compose.js && node --check lib/draft-intent.js && node --check lib/draft-pipeline.js && node --check lib/draft-quality-audit.js && node --check lib/draft-templates.js && node --check lib/html-extractor.js && node --check lib/page-audit.js && node --check lib/plan-length.js && node --check lib/refresh-candidates.js && node --check lib/request-security.js && node --check lib/site-context.js && node --check lib/site-discovery.js && node --check lib/url-utils.js"
+    "check": "node --check server.js && node --check app.js && node --check client/app-meta.js && node --check client/error-messages.js && node --check client/checklist-taxonomy.js && node --check client/download.js && node --check client/draft-request.js && node --check client/draft-selection.js && node --check client/fallback-workflow.js && node --check client/local-projects.js && node --check client/markdown-export.js && node --check client/workflow-normalize.js && node --check lib/ai-prompts.js && node --check lib/anti-ai-rules.js && node --check lib/codex-stream.js && node --check lib/content-audit.js && node --check lib/draft-compose.js && node --check lib/draft-intent.js && node --check lib/draft-pipeline.js && node --check lib/draft-quality-audit.js && node --check lib/draft-templates.js && node --check lib/gsc-client.js && node --check lib/html-extractor.js && node --check lib/opportunity-briefs.js && node --check lib/opportunity-plan.js && node --check lib/page-audit.js && node --check lib/plan-length.js && node --check lib/refresh-candidates.js && node --check lib/request-security.js && node --check lib/seo-opportunities.js && node --check lib/site-context.js && node --check lib/site-discovery.js && node --check lib/url-utils.js"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",

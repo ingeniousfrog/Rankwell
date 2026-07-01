@@ -29,6 +29,9 @@ test("classifyClientError distinguishes server unreachable from generic failures
   assert.equal(unreachable.kind, "server-unreachable");
   assert.match(unreachable.hint, /npm run start/);
 
+  const webkitLoadFailed = classifyClientError(new TypeError("Load failed"));
+  assert.equal(webkitLoadFailed.kind, "server-unreachable");
+
   const timeout = classifyClientError(Object.assign(new Error("Analysis request timed out"), { name: "AbortError" }));
   assert.equal(timeout.kind, "timeout");
 });

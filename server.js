@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import crypto from "node:crypto";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -12,6 +13,16 @@ import { auditDraftFull } from "./lib/draft-quality-audit.js";
 import { normalizePlanLength, PLAN_LENGTH_MIN } from "./lib/plan-length.js";
 import { isAllowedLocalOrigin, isLikelyPublicHttpUrl } from "./lib/request-security.js";
 import { buildRefreshCandidates } from "./lib/refresh-candidates.js";
+import {
+  buildGscAuthorizationUrl,
+  exchangeGscCodeForTokens,
+  fetchGscPerformanceForUrl,
+  getGscOAuthConfig,
+  readGscStatus,
+} from "./lib/gsc-client.js";
+import { buildSeoOpportunities } from "./lib/seo-opportunities.js";
+import { buildOpportunityBrief } from "./lib/opportunity-briefs.js";
+import { buildOpportunityBackedPlan } from "./lib/opportunity-plan.js";
 import { createSiteContext } from "./lib/site-context.js";
 import { pageWasCrawled } from "./lib/site-grounding.js";
 import { createFallbackWorkflow, buildDraft } from "./client/fallback-workflow.js";
@@ -35,7 +46,9 @@ const MAX_BODY_BYTES = 32_000;
 const DEFAULT_AI_MODEL = "gpt-5.5";
 const ALLOW_PRIVATE_TARGETS = process.env.ALLOW_PRIVATE_TARGETS === "1";
 const SITE_CONTEXT_CACHE_TTL_MS = 30 * 60 * 1000;
+const GSC_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const siteContextCache = new Map();
+const gscOauthStates = new Map();
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -60,6 +73,14 @@ const sendJson = (res, status, body) => {
   res.end(JSON.stringify(body));
 };
 
+const sendHtml = (res, status, body) => {
+  res.writeHead(status, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
+  res.end(body);
+};
+
 const sendNdjsonLine = (res, payload) => {
   res.write(`${JSON.stringify(payload)}\n`);
   if (typeof res.flush === "function") {
@@ -68,6 +89,14 @@ const sendNdjsonLine = (res, payload) => {
 };
 
 const wantsNdjsonStream = (req) => String(req.headers.accept || "").includes("application/x-ndjson");
+
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 
 const getCodexHome = () => {
   const defaultHome = path.join(os.homedir(), ".codex");
@@ -144,6 +173,46 @@ const readCodexAuthStatus = () => {
     };
   }
 };
+
+const createGscOAuthState = () => {
+  const state = crypto.randomBytes(24).toString("base64url");
+  const expiresAt = Date.now() + GSC_OAUTH_STATE_TTL_MS;
+  gscOauthStates.set(state, expiresAt);
+  for (const [key, value] of gscOauthStates.entries()) {
+    if (value < Date.now()) gscOauthStates.delete(key);
+  }
+  return state;
+};
+
+const consumeGscOAuthState = (state) => {
+  const expiresAt = gscOauthStates.get(state);
+  gscOauthStates.delete(state);
+  return Boolean(expiresAt && expiresAt >= Date.now());
+};
+
+const renderGscCallbackPage = ({ title, message, ok }) => `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(title)}</title>
+    <style>
+      body { margin: 0; font: 15px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #17202a; background: #f8fafc; }
+      main { max-width: 560px; margin: 12vh auto; padding: 28px; background: white; border: 1px solid #dce3ec; border-radius: 8px; box-shadow: 0 16px 50px rgba(15, 23, 42, 0.08); }
+      h1 { margin: 0 0 10px; font-size: 24px; }
+      p { margin: 0 0 18px; color: #526070; }
+      a, button { display: inline-flex; min-height: 36px; align-items: center; padding: 0 12px; border-radius: 6px; border: 1px solid #cfd8e3; background: ${ok ? "#eefaf1" : "#fff5f5"}; color: ${ok ? "#166534" : "#b91c1c"}; text-decoration: none; font-weight: 700; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>${escapeHtml(title)}</h1>
+      <p>${escapeHtml(message)}</p>
+      <button type="button" onclick="window.close()">Close this tab</button>
+      <a href="/">Return to Rankwell</a>
+    </main>
+  </body>
+</html>`;
 
 const getActiveModel = (codexDefaultModel = readCodexDefaultModel()) => {
   if (process.env.AI_MODEL?.trim()) return process.env.AI_MODEL.trim();
@@ -261,18 +330,29 @@ const borrowCodexCredentials = async () => {
   return { accessToken, accountId };
 };
 
-const readRequestBody = (req) =>
+const readRequestBody = (req, maxBytes = MAX_BODY_BYTES) =>
   new Promise((resolve, reject) => {
     let body = "";
+    let settled = false;
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
     req.on("data", (chunk) => {
+      if (settled) return;
       body += chunk;
-      if (Buffer.byteLength(body) > MAX_BODY_BYTES) {
-        reject(new Error("Request body is too large."));
-        req.destroy();
+      if (Buffer.byteLength(body) > maxBytes) {
+        fail(new Error("Request body is too large."));
+        req.resume();
       }
     });
-    req.on("end", () => resolve(body));
-    req.on("error", reject);
+    req.on("end", () => {
+      if (settled) return;
+      settled = true;
+      resolve(body);
+    });
+    req.on("error", fail);
   });
 
 const cleanString = (value, fallback = "") =>
@@ -407,6 +487,27 @@ const assertDraftShape = (draft) => {
   }
 };
 
+const getDraftMode = (calendarItem = {}) => calendarItem.draftMode || "newPageDraft";
+
+const attachDraftSourceFields = (draft, calendarItem = {}) => ({
+  ...draft,
+  sourceCalendarItemId: draft.sourceCalendarItemId || calendarItem.id || "",
+  sourceOpportunityId: draft.sourceOpportunityId || calendarItem.sourceOpportunityId || "",
+  opportunityType: draft.opportunityType || calendarItem.opportunityType || "crawlFallback",
+  draftMode: draft.draftMode || getDraftMode(calendarItem),
+  targetUrl: draft.targetUrl || calendarItem.targetUrl || calendarItem.placementUrl || draft.placementUrl || "",
+});
+
+const isBriefDraftMode = (calendarItem = {}) => ["refreshBrief", "expandBrief"].includes(getDraftMode(calendarItem));
+
+const buildLocalDraftForCalendarItem = (calendarItem, input, siteContext) =>
+  isBriefDraftMode(calendarItem)
+    ? buildOpportunityBrief(calendarItem, input, siteContext)
+    : attachDraftSourceFields(buildDraft(calendarItem, input, siteContext), calendarItem);
+
+const firstDraftableCalendarItem = (workflow) =>
+  (Array.isArray(workflow.calendar) ? workflow.calendar : []).find((item) => item?.isDraftable !== false) || null;
+
 const mergeDraftQaChecks = (draft, calendarItem, siteContext, input, draftIntent = null) => {
   const audit = auditDraftFull(draft, calendarItem, siteContext, input, draftIntent);
   const existingLabels = new Set((draft.qaChecks || []).map((check) => check.label));
@@ -472,22 +573,22 @@ const generateDraftPipeline = async ({ input, calendarItem, existingTitles, site
   return {
     provider: "codex-oauth",
     model: getActiveModel(),
-    draft: modelResult.draft,
+    draft: attachDraftSourceFields(modelResult.draft, calendarItem),
     draftRuntime: modelResult.draftRuntime,
     usage: modelResult.usage,
   };
 };
 
-const repairInitialDraft = (workflow, input, siteContext) => {
-  const calendarItem = Array.isArray(workflow.calendar) ? workflow.calendar[0] : null;
-  if (!calendarItem) {
+const repairInitialDraft = (workflow, input, siteContext, calendarItem = null) => {
+  const targetCalendarItem = calendarItem || firstDraftableCalendarItem(workflow);
+  if (!targetCalendarItem) {
     throw new Error("Workflow is missing calendar items.");
   }
   const mergedInput = {
     ...input,
     ...(workflow.inputs && typeof workflow.inputs === "object" ? workflow.inputs : {}),
   };
-  const draft = buildDraft(calendarItem, mergedInput, siteContext);
+  const draft = buildLocalDraftForCalendarItem(targetCalendarItem, mergedInput, siteContext);
   draft.qaChecks = [
     ...(Array.isArray(draft.qaChecks) ? draft.qaChecks : []),
     {
@@ -500,14 +601,14 @@ const repairInitialDraft = (workflow, input, siteContext) => {
   return draft;
 };
 
-const ensureInitialDraft = (workflow, input, siteContext) => {
+const ensureInitialDraft = (workflow, input, siteContext, calendarItem = null) => {
   const firstDraft = Array.isArray(workflow.drafts) ? workflow.drafts[0] : null;
   try {
     if (!firstDraft) throw new Error("Initial draft is missing.");
     assertDraftShape(firstDraft);
     return null;
   } catch {
-    workflow.drafts = [repairInitialDraft(workflow, input, siteContext)];
+    workflow.drafts = [repairInitialDraft(workflow, input, siteContext, calendarItem)];
     return "Initial AI draft was missing or invalid, so a local day-1 template was inserted. Use Regenerate to try AI again.";
   }
 };
@@ -526,6 +627,104 @@ const sanitizeRefreshCandidates = (workflow, siteContext) => {
     })
     .slice(0, 12);
   workflow.strategy = strategy;
+};
+
+const unavailableGscPerformance = (status, extra = {}) => ({
+  status: status.configured ? (status.authorized ? "unavailable" : "not-authorized") : "not-configured",
+  message: status.message,
+  propertyUrl: "",
+  rowCount: 0,
+  totalClicks: 0,
+  totalImpressions: 0,
+  averageCtr: 0,
+  averagePosition: 0,
+  dateRange: { startDate: "", endDate: "" },
+  limitations: [
+    "Connect Google Search Console to turn owned-site impressions, CTR, average position, and landing pages into opportunity tasks.",
+    "Search Console hides some low-volume or anonymized queries and does not replace an external keyword database.",
+  ],
+  ...extra,
+});
+
+const normalizeGscFilterInput = (value, maxLength = 32) =>
+  typeof value === "string" && value.trim() ? value.trim().slice(0, maxLength) : "";
+
+const normalizeGscDateInput = (value) => {
+  const text = normalizeGscFilterInput(value, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
+};
+
+const loadGscOpportunityLayer = async (input, siteContext, filters = {}) => {
+  const status = readGscStatus({ env: process.env, port: PORT });
+  if (!status.configured || !status.authorized) {
+    return {
+      gscPerformance: unavailableGscPerformance(status),
+      opportunities: [],
+    };
+  }
+
+  try {
+    const performance = await fetchGscPerformanceForUrl({
+      url: input.url,
+      env: process.env,
+      port: PORT,
+      fetchImpl: fetch,
+      country: normalizeGscFilterInput(filters.country, 3).toUpperCase(),
+      device: normalizeGscFilterInput(filters.device, 16).toUpperCase(),
+      startDate: normalizeGscDateInput(filters.startDate),
+      endDate: normalizeGscDateInput(filters.endDate),
+    });
+    const opportunityResult = buildSeoOpportunities({
+      performanceRows: performance.rows,
+      siteContext,
+    });
+    return {
+      gscPerformance: {
+        status: performance.status,
+        message: performance.message,
+        propertyUrl: performance.propertyUrl,
+        permissionLevel: performance.permissionLevel || "",
+        rowCount: performance.rowCount,
+        totalClicks: opportunityResult.totalClicks,
+        totalImpressions: opportunityResult.totalImpressions,
+        averageCtr: opportunityResult.averageCtr,
+        averagePosition: opportunityResult.averagePosition,
+        dateRange: performance.dateRange || { startDate: "", endDate: "" },
+        limitations: opportunityResult.limitations,
+      },
+      opportunities: opportunityResult.items,
+    };
+  } catch (error) {
+    return {
+      gscPerformance: unavailableGscPerformance(status, {
+        status: "error",
+        message: error instanceof Error ? error.message : String(error),
+      }),
+      opportunities: [],
+    };
+  }
+};
+
+const attachGscOpportunityLayer = async (workflow, input, siteContext) => {
+  const layer = await loadGscOpportunityLayer(input, siteContext);
+  const strategy = workflow.strategy && typeof workflow.strategy === "object" ? workflow.strategy : {};
+  const fallbackCalendar = Array.isArray(workflow.calendar) ? workflow.calendar : [];
+  const plan = buildOpportunityBackedPlan({
+    opportunities: layer.opportunities,
+    fallbackCalendar,
+    planLength: input.planLength,
+    siteContext,
+    inputs: input,
+  });
+  const calendarAudit = auditCalendar(plan, input, siteContext);
+  workflow.strategy = {
+    ...strategy,
+    opportunities: layer.opportunities,
+  };
+  workflow.calendar = calendarAudit.items;
+  workflow.calendarAudit = calendarAudit.summary;
+  workflow.gscPerformance = layer.gscPerformance;
+  return workflow;
 };
 
 const generateWorkflowWithAi = async (input, siteContext, report) => {
@@ -570,22 +769,32 @@ const generateWorkflowWithAi = async (input, siteContext, report) => {
   const calendarAudit = auditCalendar(workflow.calendar || [], workflow.inputs, siteContext);
   workflow.calendar = calendarAudit.items;
   workflow.calendarAudit = calendarAudit.summary;
+  await attachGscOpportunityLayer(workflow, workflow.inputs || input, siteContext);
   let draftFallbackReason = null;
-  if (input.includeDraft && workflow.calendar?.[0]) {
-    draftFallbackReason = ensureInitialDraft(workflow, input, siteContext);
+  const starterCalendarItem = firstDraftableCalendarItem(workflow);
+  if (input.includeDraft && starterCalendarItem) {
+    if (workflow.drafts?.[0]?.sourceCalendarItemId !== starterCalendarItem.id) {
+      workflow.drafts = [];
+    }
+    draftFallbackReason = ensureInitialDraft(workflow, input, siteContext, starterCalendarItem);
     try {
-      const pipelineResult = await generateDraftPipeline({
-        input: workflow.inputs || input,
-        calendarItem: workflow.calendar[0],
-        existingTitles: (workflow.drafts || []).map((draft) => draft.title).filter(Boolean),
-        siteContext,
-        onStage: (stage) => {
-          report?.("draft", {
-            label: DRAFT_PROGRESS_LABELS[stage] || "Generating starter draft",
+      const pipelineResult = isBriefDraftMode(starterCalendarItem)
+        ? {
+            draft: buildOpportunityBrief(starterCalendarItem, workflow.inputs || input, siteContext),
+            draftRuntime: null,
+          }
+        : await generateDraftPipeline({
+            input: workflow.inputs || input,
+            calendarItem: starterCalendarItem,
+            existingTitles: (workflow.drafts || []).map((draft) => draft.title).filter(Boolean),
+            siteContext,
+            onStage: (stage) => {
+              report?.("draft", {
+                label: DRAFT_PROGRESS_LABELS[stage] || "Generating starter draft",
+              });
+            },
           });
-        },
-      });
-      workflow.drafts = [pipelineResult.draft];
+      workflow.drafts = [attachDraftSourceFields(pipelineResult.draft, starterCalendarItem)];
       workflow.day1DraftRuntime = pipelineResult.draftRuntime;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -595,7 +804,7 @@ const generateWorkflowWithAi = async (input, siteContext, report) => {
       if (workflow.drafts?.[0]) {
         mergeDraftQaChecks(
           workflow.drafts[0],
-          workflow.calendar[0],
+          starterCalendarItem,
           siteContext,
           input,
           workflow.drafts[0].draftRuntime?.intent,
@@ -635,10 +844,12 @@ const generateWorkflow = async (input, { onProgress } = {}) => {
     report("process-strategy", { detail: "Falling back to local rules" });
     report("process-calendar");
     report("finalize", { detail: message });
+    const workflow = createFallbackWorkflow(input, siteContext);
+    await attachGscOpportunityLayer(workflow, input, siteContext);
     return {
       provider: "local-rules",
       model: "rules",
-      workflow: createFallbackWorkflow(input, siteContext),
+      workflow,
       usage: null,
       fallbackReason: message,
     };
@@ -650,6 +861,20 @@ const generateDraftWithAi = async ({ input, calendarItem, existingTitles, siteCo
 
 const generateDraft = async ({ input, calendarItem, existingTitles, siteContext: providedSiteContext, onStage }) => {
   const siteContext = await resolveSiteContext({ url: input.url, providedSiteContext });
+  const draftMode = getDraftMode(calendarItem);
+  if (draftMode === "governance") {
+    throw new Error("Governance task cannot generate a draft. Resolve it as a structure task with merge, canonical, redirect, or primary URL decisions.");
+  }
+  if (isBriefDraftMode(calendarItem)) {
+    const draft = buildOpportunityBrief(calendarItem, input, siteContext);
+    return {
+      provider: "opportunity-rules",
+      model: "rules",
+      draft: attachDraftSourceFields(draft, calendarItem),
+      draftRuntime: draft.draftRuntime || null,
+      usage: null,
+    };
+  }
   try {
     const result = await generateDraftWithAi({ input, calendarItem, existingTitles, siteContext, onStage });
     return {
@@ -658,7 +883,7 @@ const generateDraft = async ({ input, calendarItem, existingTitles, siteContext:
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const draft = buildDraft(calendarItem, input, siteContext);
+    const draft = buildLocalDraftForCalendarItem(calendarItem, input, siteContext);
     draft.qaChecks = [
       ...(Array.isArray(draft.qaChecks) ? draft.qaChecks : []),
       {
@@ -717,6 +942,111 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
     if (url.pathname.startsWith("/api/") && !isAllowedLocalOrigin(req.headers, PORT)) {
       sendJson(res, 403, { error: "API requests are only accepted from this local app origin." });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/gsc/status") {
+      sendJson(res, 200, readGscStatus({ env: process.env, port: PORT }));
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/gsc/auth/start") {
+      const config = getGscOAuthConfig({ env: process.env, port: PORT });
+      if (!config.configured) {
+        sendJson(res, 400, readGscStatus({ env: process.env, port: PORT }));
+        return;
+      }
+      const state = createGscOAuthState();
+      const authorizationUrl = buildGscAuthorizationUrl({
+        clientId: config.clientId,
+        redirectUri: config.redirectUri,
+        state,
+      });
+      res.writeHead(302, {
+        Location: authorizationUrl.toString(),
+        "Cache-Control": "no-store",
+      });
+      res.end();
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/gsc/oauth/callback") {
+      const error = url.searchParams.get("error");
+      if (error) {
+        sendHtml(
+          res,
+          400,
+          renderGscCallbackPage({
+            ok: false,
+            title: "Google Search Console was not connected",
+            message: error,
+          }),
+        );
+        return;
+      }
+
+      const state = url.searchParams.get("state") || "";
+      const code = url.searchParams.get("code") || "";
+      if (!code || !consumeGscOAuthState(state)) {
+        sendHtml(
+          res,
+          400,
+          renderGscCallbackPage({
+            ok: false,
+            title: "Google Search Console was not connected",
+            message: "The OAuth callback was missing a valid code or state. Start the connection again from Rankwell.",
+          }),
+        );
+        return;
+      }
+
+      try {
+        await exchangeGscCodeForTokens({
+          code,
+          config: getGscOAuthConfig({ env: process.env, port: PORT }),
+          fetchImpl: fetch,
+        });
+        sendHtml(
+          res,
+          200,
+          renderGscCallbackPage({
+            ok: true,
+            title: "Google Search Console connected",
+            message: "Rankwell can now use owned-site performance data for opportunity discovery. Return to the app and refresh the GSC status.",
+          }),
+        );
+      } catch (callbackError) {
+        sendHtml(
+          res,
+          400,
+          renderGscCallbackPage({
+            ok: false,
+            title: "Google Search Console was not connected",
+            message: callbackError instanceof Error ? callbackError.message : String(callbackError),
+          }),
+        );
+      }
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/gsc/opportunities") {
+      const targetUrl = cleanString(url.searchParams.get("url"));
+      if (!targetUrl) {
+        sendJson(res, 400, { error: "url query parameter is required." });
+        return;
+      }
+      const input = validateGenerateInput({ url: targetUrl });
+      const siteContext = await resolveSiteContext({ url: input.url });
+      const layer = await loadGscOpportunityLayer(input, siteContext, {
+        country: url.searchParams.get("country") || "",
+        device: url.searchParams.get("device") || "",
+        startDate: url.searchParams.get("startDate") || "",
+        endDate: url.searchParams.get("endDate") || "",
+      });
+      sendJson(res, 200, {
+        gscPerformance: layer.gscPerformance,
+        opportunities: layer.opportunities,
+      });
       return;
     }
 
