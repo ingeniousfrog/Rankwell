@@ -15,6 +15,7 @@ import { buildRefreshCandidates } from "./lib/refresh-candidates.js";
 import { createSiteContext } from "./lib/site-context.js";
 import { pageWasCrawled } from "./lib/site-grounding.js";
 import { createFallbackWorkflow, buildDraft } from "./client/fallback-workflow.js";
+import { readResponsesSseStream } from "./lib/codex-stream.js";
 
 const moduleDir = (() => {
   const metaUrl = import.meta.url;
@@ -260,79 +261,6 @@ const borrowCodexCredentials = async () => {
   return { accessToken, accountId };
 };
 
-const parseResponsesSseChunk = (buffer) => {
-  const events = [];
-  const lines = buffer.split("\n");
-  const remainder = lines.pop() ?? "";
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("data:")) continue;
-    const payload = trimmed.replace(/^data:\s*/, "");
-    if (!payload || payload === "[DONE]") continue;
-    try {
-      events.push(JSON.parse(payload));
-    } catch {
-      /* skip malformed stream events */
-    }
-  }
-  return { remainder, events };
-};
-
-const extractResponsesText = (json) => {
-  if (!json || typeof json !== "object") return null;
-  if (typeof json.output_text === "string" && json.output_text.trim()) return json.output_text.trim();
-  if (!Array.isArray(json.output)) return null;
-
-  const parts = [];
-  for (const item of json.output) {
-    if (!item || typeof item !== "object" || item.type !== "message" || !Array.isArray(item.content)) continue;
-    for (const block of item.content) {
-      if (block?.type === "output_text" && typeof block.text === "string" && block.text.trim()) {
-        parts.push(block.text.trim());
-      }
-    }
-  }
-  return parts.length > 0 ? parts.join("\n").trim() : null;
-};
-
-const readResponsesSseStream = async (body) => {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  const state = { streamed: "", completed: null };
-
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const parsed = parseResponsesSseChunk(buffer);
-    buffer = parsed.remainder;
-    for (const event of parsed.events) {
-      if (event?.type === "response.output_text.delta" && typeof event.delta === "string") {
-        state.streamed += event.delta;
-      } else if (event?.type === "response.completed" && event.response) {
-        state.completed = event.response;
-      }
-    }
-  }
-
-  if (buffer.trim()) {
-    const parsed = parseResponsesSseChunk(`${buffer}\n`);
-    for (const event of parsed.events) {
-      if (event?.type === "response.output_text.delta" && typeof event.delta === "string") {
-        state.streamed += event.delta;
-      } else if (event?.type === "response.completed" && event.response) {
-        state.completed = event.response;
-      }
-    }
-  }
-
-  return {
-    text: state.streamed.trim() || extractResponsesText(state.completed) || "",
-    usage: state.completed?.usage || null,
-  };
-};
-
 const readRequestBody = (req) =>
   new Promise((resolve, reject) => {
     let body = "";
@@ -522,7 +450,7 @@ const callCodexModel = async (prompt, { timeoutMs = 180_000 } = {}) => {
   }
   if (!response.body) throw new Error("Codex OAuth provider returned empty body.");
 
-  const { text, usage } = await readResponsesSseStream(response.body);
+  const { text, usage } = await readResponsesSseStream(response.body, { timeoutMs });
   if (!text.trim()) throw new Error("Codex OAuth provider returned empty response.");
   return {
     model,
@@ -631,7 +559,7 @@ const generateWorkflowWithAi = async (input, siteContext, report) => {
   }
   if (!response.body) throw new Error("Codex OAuth provider returned empty body.");
 
-  const { text, usage } = await readResponsesSseStream(response.body);
+  const { text, usage } = await readResponsesSseStream(response.body, { timeoutMs: 120_000 });
   if (!text.trim()) throw new Error("Codex OAuth provider returned empty response.");
   const workflow = parseModelJson(text);
   report?.("process-strategy");
@@ -659,7 +587,11 @@ const generateWorkflowWithAi = async (input, siteContext, report) => {
       });
       workflow.drafts = [pipelineResult.draft];
       workflow.day1DraftRuntime = pipelineResult.draftRuntime;
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      draftFallbackReason =
+        draftFallbackReason ||
+        `Starter draft AI pipeline failed: ${message}`;
       if (workflow.drafts?.[0]) {
         mergeDraftQaChecks(
           workflow.drafts[0],
@@ -702,7 +634,7 @@ const generateWorkflow = async (input, { onProgress } = {}) => {
     const message = error instanceof Error ? error.message : String(error);
     report("process-strategy", { detail: "Falling back to local rules" });
     report("process-calendar");
-    report("finalize");
+    report("finalize", { detail: message });
     return {
       provider: "local-rules",
       model: "rules",
@@ -727,6 +659,14 @@ const generateDraft = async ({ input, calendarItem, existingTitles, siteContext:
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const draft = buildDraft(calendarItem, input, siteContext);
+    draft.qaChecks = [
+      ...(Array.isArray(draft.qaChecks) ? draft.qaChecks : []),
+      {
+        label: "AI fallback",
+        status: "warn",
+        detail: message,
+      },
+    ];
     return {
       provider: "local-rules",
       model: "rules",

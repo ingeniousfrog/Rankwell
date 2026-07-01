@@ -486,6 +486,7 @@ const requestDraftFromApi = async (calendarItem, { replaceIndex, progressButton 
           input: getInputs(),
           calendarItem,
           existingTitles,
+          siteContext: currentWorkflow?.siteContext || null,
         }),
       },
       DRAFT_TIMEOUT_MS,
@@ -557,10 +558,8 @@ const generateDraftForCalendarItem = async (calendarItem, button) => {
   } catch (error) {
     showToast(formatDraftError(error));
   } finally {
-    const added = currentWorkflow?.drafts?.some((draft) => draft.title === calendarItem.title);
-    if (!added) {
-      button.disabled = false;
-      button.textContent = "Generate";
+    if (currentWorkflow) {
+      renderCalendar(currentWorkflow);
     }
   }
 };
@@ -1454,9 +1453,8 @@ regenerateDraftButton?.addEventListener("click", async () => {
     showToast("Could not match this draft to a calendar entry.");
     return;
   }
-  if (!window.confirm("Regenerating will replace the current draft. Continue?")) return;
-
   regenerateDraftButton.disabled = true;
+  regenerateDraftButton.textContent = "Regenerating...";
   try {
     await requestDraftFromApi(calendarItem, { replaceIndex: index, progressButton: regenerateDraftButton });
   } catch (error) {
