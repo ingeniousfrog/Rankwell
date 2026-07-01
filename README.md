@@ -294,7 +294,7 @@ Crawl results are held in memory for the session/API response — Rankwell does 
 - **Public HTML sites** — JavaScript-heavy SPAs may yield sparse crawl context
 - **Same-origin crawl only** — no cross-domain or authenticated page access
 - **Codex: local CLI session only** — no in-browser OAuth or built-in OpenAI API key UI
-- **macOS desktop only** today — Tauri bundle targets Apple Silicon DMG (`src-tauri/`)
+- **macOS desktop only** today — Tauri bundle ships **Apple Silicon** and **Intel** DMGs via [GitHub Releases](https://github.com/ingeniousfrog/Rankwell/releases)
 - **Single port** — default `5279`; do not run `npm run start` and the installed desktop app simultaneously on the same port
 - **English-first prompts** — UI strings are English; generated content language follows site and inputs
 
@@ -303,6 +303,17 @@ Crawl results are held in memory for the session/API response — Rankwell does 
 Rankwell ships a **macOS desktop app** ([`src-tauri/`](src-tauri/)) — a Tauri 2 shell that bundles the Node API sidecar and static UI. End users do not need a separate `npm run start` terminal.
 
 **Version** is read from [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) (currently `0.1.0`).
+
+### Download (macOS)
+
+Prebuilt DMGs are attached to [GitHub Releases](https://github.com/ingeniousfrog/Rankwell/releases):
+
+| Mac | Download |
+|-----|----------|
+| Apple Silicon (M1/M2/M3/M4) | `Rankwell_<version>_aarch64.dmg` |
+| Intel (x64) | `Rankwell_<version>_x64.dmg` |
+
+Pushing a `v*` tag triggers [`.github/workflows/release-macos.yml`](.github/workflows/release-macos.yml) to build both architectures and upload the DMGs automatically.
 
 ### Build from source
 
@@ -321,7 +332,8 @@ npm run tauri:build
 **Output:**
 
 ```text
-src-tauri/target/release/bundle/dmg/Rankwell_0.1.0_aarch64.dmg
+src-tauri/target/release/bundle/dmg/Rankwell_0.1.0_aarch64.dmg   # Apple Silicon
+src-tauri/target/release/bundle/dmg/Rankwell_0.1.0_x64.dmg        # Intel
 src-tauri/target/release/bundle/macos/Rankwell.app
 ```
 

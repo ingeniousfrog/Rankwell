@@ -294,7 +294,7 @@ codex login
 - **公开 HTML 站点** — JS 重度 SPA 可能爬取上下文稀疏
 - **仅同域爬取** — 不支持跨域或需登录页面
 - **Codex：仅本地 CLI 会话** — 无浏览器内 OAuth 或内置 OpenAI API Key 界面
-- **目前仅 macOS 桌面版** — Tauri 构建 Apple Silicon DMG（`src-tauri/`）
+- **目前仅 macOS 桌面版** — Tauri 通过 [GitHub Releases](https://github.com/ingeniousfrog/Rankwell/releases) 提供 **Apple Silicon** 与 **Intel** 双架构 DMG
 - **单端口** — 默认 `5279`；勿与已安装的桌面版同时在本机跑 `npm run start`
 - **英文优先的提示词** — UI 为英文；生成内容语言随站点与输入而定
 
@@ -303,6 +303,17 @@ codex login
 Rankwell 提供 **macOS 桌面应用**（[`src-tauri/`](src-tauri/)）—— Tauri 2 壳捆绑 Node API sidecar 与静态 UI，终端用户无需单独 `npm run start`。
 
 **版本号** 来自 [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)（当前 `0.1.0`）。
+
+### 下载（macOS）
+
+预编译 DMG 见 [GitHub Releases](https://github.com/ingeniousfrog/Rankwell/releases)：
+
+| Mac | 安装包 |
+|-----|--------|
+| Apple Silicon（M1/M2/M3/M4） | `Rankwell_<version>_aarch64.dmg` |
+| Intel（x64） | `Rankwell_<version>_x64.dmg` |
+
+推送 `v*` 标签会触发 [`.github/workflows/release-macos.yml`](.github/workflows/release-macos.yml)，自动构建双架构 DMG 并上传到 Release。
 
 ### 从源码构建
 
@@ -321,7 +332,8 @@ npm run tauri:build
 **产物路径：**
 
 ```text
-src-tauri/target/release/bundle/dmg/Rankwell_0.1.0_aarch64.dmg
+src-tauri/target/release/bundle/dmg/Rankwell_0.1.0_aarch64.dmg   # Apple Silicon
+src-tauri/target/release/bundle/dmg/Rankwell_0.1.0_x64.dmg        # Intel
 src-tauri/target/release/bundle/macos/Rankwell.app
 ```
 
