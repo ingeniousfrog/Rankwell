@@ -239,6 +239,93 @@
       </section>
     </main>
 
+    <footer class="app-meta" aria-label="Application information">
+      <span id="app-meta-version" class="app-meta-version">Rankwell v0.1.0</span>
+      <span class="app-meta-sep" aria-hidden="true">·</span>
+      <nav class="app-meta-nav" aria-label="Info links">
+        <button class="app-meta-link" type="button" data-info-panel="about">About</button>
+        <span class="app-meta-sep" aria-hidden="true">·</span>
+        <button class="app-meta-link" type="button" data-info-panel="help">Help</button>
+        <span class="app-meta-sep" aria-hidden="true">·</span>
+        <button class="app-meta-link" type="button" data-info-panel="license">License</button>
+        <span class="app-meta-sep" aria-hidden="true">·</span>
+        <a
+          class="app-meta-link app-meta-external"
+          href="https://github.com/ingeniousfrog/Rankwell"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          GitHub
+          <span aria-hidden="true">↗</span>
+        </a>
+      </nav>
+    </footer>
+
+    <dialog id="info-dialog" class="info-dialog" aria-labelledby="info-dialog-title">
+      <div class="info-dialog-shell">
+        <header class="info-dialog-header">
+          <h2 id="info-dialog-title" class="info-dialog-title">About Rankwell</h2>
+          <button id="info-dialog-close" class="info-dialog-close" type="button" aria-label="Close">×</button>
+        </header>
+        <div class="info-dialog-body">
+          <section id="info-panel-about" class="info-panel" data-info-panel="about">
+            <p>
+              Rankwell answers <strong>“what should this site publish next?”</strong> by crawling real pages first,
+              then planning keywords, a content calendar, and draft outlines from evidence on your machine — not from a
+              SaaS black box or a one-shot chat prompt.
+            </p>
+            <ul class="info-list">
+              <li><strong>Site crawl</strong> — robots.txt, sitemap, and same-domain pages with a coverage report</li>
+              <li><strong>Search themes</strong> — keyword candidates with intent, fit, difficulty, and question variants</li>
+              <li><strong>Content calendar</strong> — a configurable 5–30 topic editorial plan mapped to formats and placements</li>
+              <li><strong>Grounded drafts</strong> — page-aware outlines with evidence refs, visual plans, and automated QA</li>
+            </ul>
+            <p class="info-note">
+              Local-first and evidence-driven: crawls and projects stay on your machine. Codex AI is optional; a
+              rule-based fallback is always available.
+            </p>
+            <p class="info-copyright">Copyright © ingeniousfrog</p>
+          </section>
+
+          <section id="info-panel-help" class="info-panel" data-info-panel="help" hidden>
+            <ol class="info-steps">
+              <li>Enter a public website URL in the input field.</li>
+              <li>Adjust plan length (5–30 topics), writing style, and whether to generate a starter draft.</li>
+              <li>Click <strong>Analyze</strong> — crawling and planning usually take 30 seconds to 2 minutes.</li>
+              <li>
+                Review the workspace tabs: Strategy, Site coverage, Search themes, Content plan, Draft outline, and
+                Checklist.
+              </li>
+              <li>Export Markdown, JSON, or a full project package (PKG) from the header actions.</li>
+            </ol>
+            <h3 class="info-subheading">Optional AI</h3>
+            <p>
+              Rankwell can use your existing Codex CLI login (<code>~/.codex/auth.json</code>). When Codex is not
+              configured, rule-based fallback still produces themes, calendar items, and draft outlines.
+            </p>
+            <h3 class="info-subheading">Import &amp; restore</h3>
+            <p>Use <strong>Import project</strong> on the landing page to load a previously exported JSON project package.</p>
+          </section>
+
+          <section id="info-panel-license" class="info-panel" data-info-panel="license" hidden>
+            <p>
+              Rankwell is licensed under the <strong>Apache License, Version 2.0</strong>. You may use, modify, and
+              distribute this software provided that you include the original copyright notice and license terms.
+            </p>
+            <p>
+              <a href="/LICENSE" target="_blank" rel="noopener noreferrer">View full LICENSE</a>
+              ·
+              <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">
+                Apache License 2.0
+              </a>
+            </p>
+            <p class="info-copyright">Copyright © ingeniousfrog</p>
+            <p class="info-note">Software is provided “as is”, without warranty of any kind.</p>
+          </section>
+        </div>
+      </div>
+    </dialog>
+
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <script type="module" src="app.js"></script>
   </body>

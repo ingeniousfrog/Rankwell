@@ -1,12 +1,14 @@
 #[cfg(not(debug_assertions))]
 use std::io::{Read, Write};
 #[cfg(not(debug_assertions))]
-use std::net::TcpStream;
+use std::net::{TcpListener, TcpStream};
 use std::sync::Mutex;
 #[cfg(not(debug_assertions))]
 use std::time::Duration;
 
 use tauri::Manager;
+#[cfg(not(debug_assertions))]
+use tauri::Url;
 use tauri_plugin_shell::process::CommandChild;
 #[cfg(not(debug_assertions))]
 use tauri_plugin_shell::process::CommandEvent;
@@ -14,18 +16,30 @@ use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
 
 #[cfg(not(debug_assertions))]
-const SERVER_PORT: u16 = 5279;
+const SERVER_PORT_START: u16 = 5279;
 
 struct ServerProcess(Mutex<Option<CommandChild>>);
 
 #[cfg(not(debug_assertions))]
-fn wait_for_server() -> Result<(), String> {
+fn find_available_server_port() -> Result<u16, String> {
+    for port in SERVER_PORT_START..SERVER_PORT_START + 100 {
+        if let Ok(listener) = TcpListener::bind(("127.0.0.1", port)) {
+            drop(listener);
+            return Ok(port);
+        }
+    }
+
+    Err("Could not find an available local API port".into())
+}
+
+#[cfg(not(debug_assertions))]
+fn wait_for_server(port: u16) -> Result<(), String> {
     let request = format!(
-    "GET /api/provider/status HTTP/1.1\r\nHost: 127.0.0.1:{SERVER_PORT}\r\nConnection: close\r\n\r\n"
-  );
+        "GET /api/provider/status HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n"
+    );
 
     for _ in 0..80 {
-        if let Ok(mut stream) = TcpStream::connect(("127.0.0.1", SERVER_PORT)) {
+        if let Ok(mut stream) = TcpStream::connect(("127.0.0.1", port)) {
             let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
             if stream.write_all(request.as_bytes()).is_ok() {
                 let mut buf = [0_u8; 512];
@@ -42,6 +56,7 @@ fn wait_for_server() -> Result<(), String> {
 
 #[cfg(not(debug_assertions))]
 fn start_server_sidecar(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let server_port = find_available_server_port()?;
     let resource_dir = app.path().resource_dir()?;
     let static_root = resource_dir.join("server-dist");
     let home_dir = app.path().home_dir()?;
@@ -49,7 +64,7 @@ fn start_server_sidecar(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
 
     let sidecar = app.shell().sidecar("server")?;
     let (mut rx, child) = sidecar
-        .env("PORT", SERVER_PORT.to_string())
+        .env("PORT", server_port.to_string())
         .env("STATIC_ROOT", static_root.to_string_lossy().to_string())
         .env("HOME", home_dir.to_string_lossy().to_string())
         .env("CODEX_HOME", codex_home.to_string_lossy().to_string())
@@ -64,7 +79,14 @@ fn start_server_sidecar(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
     });
 
     app.manage(ServerProcess(Mutex::new(Some(child))));
-    wait_for_server().map_err(|error| error.into())
+    wait_for_server(server_port)?;
+
+    if let Some(window) = app.get_webview_window("main") {
+        let url = Url::parse(&format!("http://127.0.0.1:{server_port}/"))?;
+        window.navigate(url)?;
+    }
+
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

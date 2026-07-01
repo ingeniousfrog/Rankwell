@@ -1361,8 +1361,9 @@ const selectTab = (target) => {
 };
 
 const setGenerateBusy = (busy) => {
-  generateButton.disabled = busy;
-  form.querySelector(".submit-inline").disabled = busy;
+  if (generateButton) generateButton.disabled = busy;
+  const submitInline = form.querySelector(".submit-inline");
+  if (submitInline) submitInline.disabled = busy;
   generateLabel.textContent = busy ? "Generating..." : "Analyze with AI";
   if (generateLabelInline) generateLabelInline.textContent = busy ? "..." : "Analyze";
 };

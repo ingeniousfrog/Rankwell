@@ -1,3 +1,14 @@
+import { initAppMeta } from "./client/app-meta.js";
+import {
+  ANALYZE_TIMEOUT_MS,
+  DRAFT_TIMEOUT_MS,
+  describeSiteCrawlIssue,
+  fetchWithTimeout,
+  formatAnalyzeError,
+  formatAnalyzeToast,
+  formatDraftError,
+  formatWorkspaceToast,
+} from "./client/error-messages.js";
 import { downloadFile } from "./client/download.js";
 import { createFallbackWorkflow, parseDomain, voiceRules, inferPlacementUrl } from "./client/fallback-workflow.js";
 import {
@@ -377,14 +388,18 @@ const readNdjsonResponse = async (response, onEvent) => {
 };
 
 const requestAiWorkflow = async (inputs, { onProgress } = {}) => {
-  const response = await fetch("/api/generate", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/x-ndjson",
+  const response = await fetchWithTimeout(
+    "/api/generate",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/x-ndjson",
+      },
+      body: JSON.stringify(inputs),
     },
-    body: JSON.stringify(inputs),
-  });
+    ANALYZE_TIMEOUT_MS,
+  );
 
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
@@ -462,15 +477,19 @@ const requestDraftFromApi = async (calendarItem, { replaceIndex, progressButton 
   const stopProgress = runDraftStageProgress(progressButton);
   let response;
   try {
-    response = await fetch("/api/draft", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        input: getInputs(),
-        calendarItem,
-        existingTitles,
-      }),
-    });
+    response = await fetchWithTimeout(
+      "/api/draft",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          input: getInputs(),
+          calendarItem,
+          existingTitles,
+        }),
+      },
+      DRAFT_TIMEOUT_MS,
+    );
   } finally {
     stopProgress();
   }
@@ -536,7 +555,7 @@ const generateDraftForCalendarItem = async (calendarItem, button) => {
   try {
     await requestDraftFromApi(calendarItem, { progressButton: button });
   } catch (error) {
-    showToast(error.message || "Could not reach server. Check that the local app is running.");
+    showToast(formatDraftError(error));
   } finally {
     const added = currentWorkflow?.drafts?.some((draft) => draft.title === calendarItem.title);
     if (!added) {
@@ -579,7 +598,7 @@ const renderProviderDetailRow = (label, value, copyValue = "") => {
 
 const refreshProviderStatus = async () => {
   try {
-    const response = await fetch("/api/provider/status");
+    const response = await fetchWithTimeout("/api/provider/status", {}, 10_000);
     const status = await response.json();
     const configured = Boolean(status.configured);
     providerCard.classList.toggle("is-ready", configured);
@@ -715,6 +734,7 @@ const renderWorkflowBanner = () => {
   workflowBanner.hidden = false;
   workflowBanner.classList.toggle("is-error", crawlFailed || /usage limit|failed/i.test(reason || ""));
   if (crawlFailed) {
+    const crawlIssue = describeSiteCrawlIssue(currentWorkflow.siteContext);
     const requestedUrl = currentWorkflow.siteContext.requestedStartUrl || currentWorkflow.inputs?.url || "";
     const crawledUrl = currentWorkflow.siteContext.startUrl || "";
     const urlHint =
@@ -722,8 +742,8 @@ const renderWorkflowBanner = () => {
         ? ` Crawled ${crawledUrl} after ${requestedUrl} failed.`
         : "";
     workflowBanner.innerHTML = `
-      <strong>Site crawl did not succeed — workspace needs review</strong>
-      <span>${escapeHtml(currentWorkflow.siteContext.error || "Re-analyze the site before generating drafts or exporting content.")}${escapeHtml(urlHint)}</span>
+      <strong>${escapeHtml(crawlIssue?.title || "Site crawl did not succeed — workspace needs review")}</strong>
+      <span>${escapeHtml(crawlIssue?.message || currentWorkflow.siteContext.error || "Re-analyze the site before generating drafts or exporting content.")}${escapeHtml(urlHint)} ${escapeHtml(crawlIssue?.hint || "")}</span>
     `;
     return;
   }
@@ -1341,8 +1361,9 @@ const selectTab = (target) => {
 };
 
 const setGenerateBusy = (busy) => {
-  generateButton.disabled = busy;
-  form.querySelector(".submit-inline").disabled = busy;
+  if (generateButton) generateButton.disabled = busy;
+  const submitInline = form.querySelector(".submit-inline");
+  if (submitInline) submitInline.disabled = busy;
   generateLabel.textContent = busy ? "Generating..." : "Analyze with AI";
   if (generateLabelInline) generateLabelInline.textContent = busy ? "..." : "Analyze";
 };
@@ -1367,18 +1388,24 @@ form.addEventListener("submit", async (event) => {
     await finishLoadingAnimation();
     const savedWorkflow = persistWorkflow(workflow);
     enterWorkspace(savedWorkflow, { syncAssumptions: true });
-    showToast(draftFallbackReason || fallbackReason || "Workspace generated");
+    showToast(
+      formatWorkspaceToast({
+        siteContext: savedWorkflow.siteContext,
+        fallbackReason,
+        draftFallbackReason,
+      }),
+    );
   } catch (error) {
     stopLoadingAnimation();
     currentProvider = null;
-    const message = error instanceof Error ? error.message : String(error);
+    const message = formatAnalyzeError(error);
     if (loadingStage) loadingStage.textContent = "Analysis failed";
     if (loadingPercent) loadingPercent.textContent = "";
     const loadingHint = document.querySelector(".loading-hint");
     if (loadingHint) loadingHint.textContent = message;
     await new Promise((resolve) => window.setTimeout(resolve, 1600));
     enterLanding();
-    showToast(`Could not analyze site: ${message}`);
+    showToast(formatAnalyzeToast(error));
     await refreshProviderStatus();
   } finally {
     forceAnalysisOnlySubmit = false;
@@ -1433,7 +1460,7 @@ regenerateDraftButton?.addEventListener("click", async () => {
   try {
     await requestDraftFromApi(calendarItem, { replaceIndex: index, progressButton: regenerateDraftButton });
   } catch (error) {
-    showToast(error.message || "Could not reach server. Check that the local app is running.");
+    showToast(formatDraftError(error));
   } finally {
     regenerateDraftButton.textContent = "Regenerate";
     updateRegenerateDraftButton();
@@ -1504,6 +1531,7 @@ projectList.addEventListener("click", (event) => {
 
 setAppPhase("landing");
 refreshProviderStatus();
+initAppMeta();
 
 window.addEventListener("pageshow", (event) => {
   if (event.persisted && appPhase === "loading") {
