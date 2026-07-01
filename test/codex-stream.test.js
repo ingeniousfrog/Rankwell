@@ -23,7 +23,7 @@ test("readResponsesSseStream returns streamed text and completed usage", async (
     'data: {"type":"response.completed","response":{"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}}\n\n',
   ]);
 
-  const result = await readResponsesSseStream(body, { timeoutMs: 1_000 });
+  const result = await readResponsesSseStream(body, { idleTimeoutMs: 1_000 });
 
   assert.equal(result.text, '{"ok":true}');
   assert.equal(result.usage.total_tokens, 5);
@@ -35,12 +35,12 @@ test("readResponsesSseStream surfaces response.failed details", async () => {
   ]);
 
   await assert.rejects(
-    () => readResponsesSseStream(body, { timeoutMs: 1_000 }),
+    () => readResponsesSseStream(body, { idleTimeoutMs: 1_000 }),
     /internal error \(server_error\)/,
   );
 });
 
-test("readResponsesSseStream times out when the stream never completes", async () => {
+test("readResponsesSseStream times out when the stream becomes idle", async () => {
   const body = new ReadableStream({
     start(controller) {
       controller.enqueue(new TextEncoder().encode('data: {"type":"response.output_text.delta","delta":"partial"}\n\n'));
@@ -48,7 +48,7 @@ test("readResponsesSseStream times out when the stream never completes", async (
   });
 
   await assert.rejects(
-    () => readResponsesSseStream(body, { timeoutMs: 20 }),
-    /timed out/,
+    () => readResponsesSseStream(body, { idleTimeoutMs: 20 }),
+    /idle for too long/,
   );
 });

@@ -450,7 +450,7 @@ const callCodexModel = async (prompt, { timeoutMs = 180_000 } = {}) => {
   }
   if (!response.body) throw new Error("Codex OAuth provider returned empty body.");
 
-  const { text, usage } = await readResponsesSseStream(response.body, { timeoutMs });
+  const { text, usage } = await readResponsesSseStream(response.body, { idleTimeoutMs: timeoutMs });
   if (!text.trim()) throw new Error("Codex OAuth provider returned empty response.");
   return {
     model,
@@ -550,7 +550,7 @@ const generateWorkflowWithAi = async (input, siteContext, report) => {
         stream: true,
       }),
     },
-    { timeoutMs: 120_000, retries: 1 },
+    { timeoutMs: 180_000, retries: 1 },
   );
 
   if (!response.ok) {
@@ -559,7 +559,7 @@ const generateWorkflowWithAi = async (input, siteContext, report) => {
   }
   if (!response.body) throw new Error("Codex OAuth provider returned empty body.");
 
-  const { text, usage } = await readResponsesSseStream(response.body, { timeoutMs: 120_000 });
+  const { text, usage } = await readResponsesSseStream(response.body, { idleTimeoutMs: 90_000 });
   if (!text.trim()) throw new Error("Codex OAuth provider returned empty response.");
   const workflow = parseModelJson(text);
   report?.("process-strategy");

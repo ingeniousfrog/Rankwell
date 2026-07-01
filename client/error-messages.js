@@ -1,4 +1,4 @@
-export const ANALYZE_TIMEOUT_MS = 300_000;
+export const ANALYZE_TIMEOUT_MS = 420_000;
 export const DRAFT_TIMEOUT_MS = 300_000;
 
 export async function fetchWithTimeout(url, options = {}, timeoutMs = ANALYZE_TIMEOUT_MS) {

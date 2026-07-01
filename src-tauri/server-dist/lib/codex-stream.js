@@ -41,21 +41,15 @@ const formatStreamError = (error) => {
   return message || code;
 };
 
-const readWithDeadline = async (reader, deadlineMs) => {
-  const remainingMs = deadlineMs - Date.now();
-  if (remainingMs <= 0) {
-    await reader.cancel().catch(() => {});
-    throw new Error("Codex OAuth response stream timed out while waiting for completion.");
-  }
-
+const readWithIdleTimeout = async (reader, idleTimeoutMs) => {
   let timeout;
   try {
     return await Promise.race([
       reader.read(),
       new Promise((_, reject) => {
         timeout = setTimeout(() => {
-          reject(new Error("Codex OAuth response stream timed out while waiting for completion."));
-        }, remainingMs);
+          reject(new Error("Codex OAuth response stream was idle for too long while waiting for completion."));
+        }, idleTimeoutMs);
       }),
     ]);
   } catch (error) {
@@ -66,10 +60,9 @@ const readWithDeadline = async (reader, deadlineMs) => {
   }
 };
 
-export const readResponsesSseStream = async (body, { timeoutMs = 180_000 } = {}) => {
+export const readResponsesSseStream = async (body, { idleTimeoutMs = 90_000 } = {}) => {
   const reader = body.getReader();
   const decoder = new TextDecoder();
-  const deadlineMs = Date.now() + timeoutMs;
   let buffer = "";
   const state = { streamed: "", completed: null, error: null };
 
@@ -89,7 +82,7 @@ export const readResponsesSseStream = async (body, { timeoutMs = 180_000 } = {})
   };
 
   for (;;) {
-    const { done, value } = await readWithDeadline(reader, deadlineMs);
+    const { done, value } = await readWithIdleTimeout(reader, idleTimeoutMs);
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
     const parsed = parseResponsesSseChunk(buffer);
