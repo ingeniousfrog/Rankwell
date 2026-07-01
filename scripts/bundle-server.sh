@@ -9,8 +9,8 @@ STATIC="$ROOT/src-tauri/server-dist"
 rm -rf "$DIST" "$STATIC"
 mkdir -p "$DIST" "$BINARIES" "$STATIC"
 
-cp "$ROOT/index.html" "$ROOT/app.js" "$ROOT/styles.css" "$ROOT/workflow-ui.css" "$ROOT/local-app.css" "$ROOT/brand-logo.svg" "$STATIC/"
-cp -R "$ROOT/client" "$STATIC/"
+cp "$ROOT/index.html" "$ROOT/app.js" "$ROOT/styles.css" "$ROOT/workflow-ui.css" "$ROOT/local-app.css" "$ROOT/brand-logo.svg" "$ROOT/LICENSE" "$STATIC/"
+cp -R "$ROOT/client" "$ROOT/lib" "$STATIC/"
 
 npx esbuild "$ROOT/server.js" \
   --bundle \

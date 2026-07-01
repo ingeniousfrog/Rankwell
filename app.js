@@ -598,7 +598,7 @@ const renderProviderDetailRow = (label, value, copyValue = "") => {
 
 const refreshProviderStatus = async () => {
   try {
-    const response = await fetch("/api/provider/status");
+    const response = await fetchWithTimeout("/api/provider/status", {}, 10_000);
     const status = await response.json();
     const configured = Boolean(status.configured);
     providerCard.classList.toggle("is-ready", configured);
